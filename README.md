@@ -10,7 +10,7 @@ An extension for advanced search functionality. The extension supports the follo
 - **Configuration**: Search for configuration content
 - **Comments**: Search for comments
 
-<img src="./assets/images/search.png" />
+<img src="./assets/gifs/search.gif" />
 
 ## Usage
 
