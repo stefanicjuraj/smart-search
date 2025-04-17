@@ -1245,6 +1245,14 @@ class SearchPanel {
                 });
               });
             });
+            
+            if (searchResults.length > 0) {
+              selectedResultIndex = 0;
+              const firstResult = document.querySelector('.result-item');
+              if (firstResult) {
+                firstResult.classList.add('selected');
+              }
+            }
           }
           
           window.addEventListener('message', event => {
