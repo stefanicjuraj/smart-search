@@ -745,8 +745,6 @@ class SearchPanel {
             `Could not open file: ${error.message}`
           );
         });
-
-      this._panel.dispose();
     } catch (error) {
       console.error("Error handling result selection:", error);
       vscode.window.showErrorMessage(`Error opening file: ${error}`);
@@ -1006,8 +1004,25 @@ class SearchPanel {
             'symbol': '${symbolIconSrc}'
           };
           
+          const previousState = vscode.getState() || { searchText: '', category: 'all' };
+          currentCategory = previousState.category || 'all';
+          
           document.addEventListener('DOMContentLoaded', () => {
             const searchInput = document.getElementById('searchInput');
+            
+            if (previousState.searchText) {
+              searchInput.value = previousState.searchText;
+              lastSearchText = previousState.searchText;
+              performSearch(previousState.searchText, currentCategory);
+            }
+            
+            document.querySelectorAll('.tab').forEach(tab => {
+              if (tab.dataset.category === currentCategory) {
+                tab.classList.add('active');
+              } else {
+                tab.classList.remove('active');
+              }
+            });
             
             searchInput.focus();
             
@@ -1019,6 +1034,8 @@ class SearchPanel {
               }
               
               lastSearchText = searchText;
+              
+              vscode.setState({ searchText: searchText, category: currentCategory });
               
               if (searchTimeout) {
                 clearTimeout(searchTimeout);
@@ -1042,6 +1059,8 @@ class SearchPanel {
                 tab.classList.add('active');
                 
                 currentCategory = tab.dataset.category;
+                
+                vscode.setState({ searchText: lastSearchText, category: currentCategory });
                 
                 const searchText = searchInput.value.trim();
                 if (searchText) {
