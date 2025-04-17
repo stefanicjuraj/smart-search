@@ -10,7 +10,7 @@ An extension for advanced search functionality. The extension supports the follo
 - **Configuration**: Search for configuration content
 - **Comments**: Search for comments
 
-![Search](./assets/images/search.png)
+<img src="./assets/images/search.png" />
 
 ## Usage
 
@@ -28,4 +28,4 @@ An extension for advanced search functionality. The extension supports the follo
 
 ## Examples
 
-![Search results](./assets/images/search-results.png)
+<img src="./assets/images/search-results.png" />
