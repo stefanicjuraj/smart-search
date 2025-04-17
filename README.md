@@ -1,6 +1,14 @@
 # Smart Search
 
-An extension for advanced search functionality for project files, text, functions, variables, documentation, configurations, and comments.
+An extension for advanced search functionality. The extension supports the following search categories:
+
+- **All**: Search for everything below
+- **Files**: Search for filenames
+- **Text**: Search for full-text content
+- **Symbols:** Search for functions and variables
+- **Documentation**: Search for documentation content
+- **Configuration**: Search for configuration content
+- **Comments**: Search for comments
 
 ![Search](./assets/images/search.png)
 
