@@ -925,6 +925,12 @@ class SearchPanel {
           max-width: 200px;
           flex-shrink: 0;
         }
+        .results-counter {
+          font-size: 13px;
+          color: var(--vscode-descriptionForeground);
+          margin-bottom: 8px;
+          padding-left: 2px;
+        }
         .line-number {
           font-size: 12px;
           color: var(--vscode-badge-foreground);
@@ -981,6 +987,7 @@ class SearchPanel {
             Comments
           </button>
         </div>
+        <div class="results-counter" id="resultsCounter"></div>
         <div class="results" id="searchResults">
           <div class="no-results">Type to search</div>
         </div>
@@ -1083,10 +1090,12 @@ class SearchPanel {
           function displayNoResults(message) {
             const resultsContainer = document.getElementById('searchResults');
             resultsContainer.innerHTML = \`<div class="no-results">\${message}</div>\`;
+            document.getElementById('resultsCounter').textContent = '';
           }
           
           function displayResults(results) {
             const resultsContainer = document.getElementById('searchResults');
+            const resultsCounter = document.getElementById('resultsCounter');
             
             if (!results || results.length === 0) {
               displayNoResults('No results found');
@@ -1113,6 +1122,8 @@ class SearchPanel {
               displayNoResults('No valid results found');
               return;
             }
+            
+            resultsCounter.textContent = \`\${searchResults.length} result\${searchResults.length === 1 ? '' : 's'}\`;
             
             searchResults.forEach((item, idx) => {
               item._originalIndex = idx;
