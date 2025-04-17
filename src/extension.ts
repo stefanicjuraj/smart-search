@@ -1078,6 +1078,8 @@ class SearchPanel {
                 if (searchText) {
                   performSearch(searchText, currentCategory);
                 }
+                
+                searchInput.focus();
               });
             });
           });
@@ -1266,6 +1268,13 @@ class SearchPanel {
           });
 
           document.addEventListener('keydown', (e) => {
+            const searchInput = document.getElementById('searchInput');
+            const activeElement = document.activeElement;
+            
+            if (activeElement && activeElement.classList && activeElement.classList.contains('tab')) {
+              return;
+            }
+            
             if (searchResults.length === 0) return;
 
             const resultElements = document.querySelectorAll('.result-item');
