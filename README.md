@@ -25,3 +25,5 @@ An extension for advanced search functionality. The extension supports the follo
 ## Installation
 
 - [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jurajstefanic.smart-search)
+
+## Examples
