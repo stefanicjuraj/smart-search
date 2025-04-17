@@ -1,0 +1,51 @@
+{
+  "name": "smart-search",
+  "displayName": "Smart Search",
+  "description": "Advanced search functionality for project files, text, functions, variables, docs, configs, and comments",
+  "version": "0.0.0",
+  "publisher": "jurajstefanic",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stefanicjuraj/smart-search"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "smart-search.openSearchPopup",
+        "title": "Smart Search: Open Search Popup"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "smart-search.openSearchPopup",
+        "key": "ctrl+alt+f",
+        "mac": "cmd+alt+f",
+        "when": "editorTextFocus || editorFocus"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "20.x",
+    "@typescript-eslint/eslint-plugin": "^8.28.0",
+    "@typescript-eslint/parser": "^8.28.0",
+    "eslint": "^9.23.0",
+    "typescript": "^5.8.2",
+    "@vscode/vsce": "^2.24.0"
+  }
+}
