@@ -889,6 +889,10 @@ class SearchPanel {
         .result-item:hover {
           background-color: var(--vscode-list-hoverBackground);
         }
+        .result-item.selected {
+          background-color: var(--vscode-list-activeSelectionBackground);
+          color: var(--vscode-list-activeSelectionForeground);
+        }
         .result-icon {
           width: 18px;
           height: 18px;
@@ -1000,6 +1004,7 @@ class SearchPanel {
           let searchTimeout;
           let lastSearchText = '';
           let searchResults = [];
+          let selectedResultIndex = -1;
           
           const iconSources = {
             'all': '${allIconSrc}',
@@ -1117,6 +1122,7 @@ class SearchPanel {
             });
             
             searchResults = validResults;
+            selectedResultIndex = -1;
             
             if (searchResults.length === 0) {
               displayNoResults('No valid results found');
@@ -1248,6 +1254,42 @@ class SearchPanel {
               case 'searchResults':
                 displayResults(message.results);
                 break;
+            }
+          });
+
+          document.addEventListener('keydown', (e) => {
+            if (searchResults.length === 0) return;
+
+            const resultElements = document.querySelectorAll('.result-item');
+            
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              
+              if (selectedResultIndex < searchResults.length - 1) {
+                if (selectedResultIndex >= 0) {
+                  resultElements[selectedResultIndex].classList.remove('selected');
+                }
+                
+                selectedResultIndex++;
+                resultElements[selectedResultIndex].classList.add('selected');
+                resultElements[selectedResultIndex].scrollIntoView({ block: 'nearest' });
+              }
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              
+              if (selectedResultIndex > 0) {
+                resultElements[selectedResultIndex].classList.remove('selected');
+                selectedResultIndex--;
+                resultElements[selectedResultIndex].classList.add('selected');
+                resultElements[selectedResultIndex].scrollIntoView({ block: 'nearest' });
+              }
+            } else if (e.key === 'Enter' && selectedResultIndex >= 0) {
+              e.preventDefault();
+              
+              vscode.postMessage({
+                command: 'selectResult',
+                item: searchResults[selectedResultIndex]
+              });
             }
           });
         })();
