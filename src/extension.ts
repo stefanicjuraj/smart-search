@@ -726,6 +726,40 @@ class SearchPanel {
             if (typeof item.lineNumber === "number") {
               const lineNumber = item.lineNumber;
               const line = document.lineAt(lineNumber);
+              const lineText = line.text;
+
+              const searchQuery = item.searchQuery;
+
+              if (
+                searchQuery &&
+                typeof searchQuery === "string" &&
+                searchQuery.trim().length > 0
+              ) {
+                const searchRegex = new RegExp(searchQuery, "gi");
+                const match = searchRegex.exec(lineText);
+
+                if (match) {
+                  const startPos = match.index;
+                  const endPos = startPos + match[0].length;
+
+                  const range = new vscode.Range(
+                    lineNumber,
+                    startPos,
+                    lineNumber,
+                    endPos
+                  );
+
+                  editor.selection = new vscode.Selection(
+                    range.start,
+                    range.end
+                  );
+                  editor.revealRange(
+                    range,
+                    vscode.TextEditorRevealType.InCenter
+                  );
+                  return;
+                }
+              }
 
               const range = new vscode.Range(
                 lineNumber,
@@ -1243,7 +1277,10 @@ class SearchPanel {
                 const index = parseInt(item.dataset.index);
                 vscode.postMessage({
                   command: 'selectResult',
-                  item: searchResults[index]
+                  item: {
+                    ...searchResults[index],
+                    searchQuery: searchQuery
+                  }
                 });
               });
             });
@@ -1303,9 +1340,13 @@ class SearchPanel {
             } else if (e.key === 'Enter' && selectedResultIndex >= 0) {
               e.preventDefault();
               
+              const searchQuery = document.getElementById('searchInput').value.trim();
               vscode.postMessage({
                 command: 'selectResult',
-                item: searchResults[selectedResultIndex]
+                item: {
+                  ...searchResults[selectedResultIndex],
+                  searchQuery: searchQuery
+                }
               });
             }
           });
