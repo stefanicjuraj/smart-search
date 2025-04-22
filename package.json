@@ -31,6 +31,12 @@
         "key": "ctrl+alt+f",
         "mac": "cmd+alt+f",
         "when": "editorTextFocus || editorFocus"
+      },
+      {
+        "command": "smart-search.openSearchPopup",
+        "key": "ctrl+k",
+        "mac": "cmd+k",
+        "when": "editorTextFocus || editorFocus"
       }
     ]
   },
