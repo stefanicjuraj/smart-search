@@ -9,6 +9,7 @@ An extension for advanced search functionality. The extension supports the follo
 - **Documentation**: Search for documentation content
 - **Configuration**: Search for configuration content
 - **Comments**: Search for comments
+- **Pinned**: Pin search results
 
 <img src="./assets/gifs/search.gif" />
 
