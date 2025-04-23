@@ -42,3 +42,7 @@ An extension for advanced search functionality. The extension supports the follo
 ### Symbols
 
 <img src="./assets/images/symbols.png" />
+
+### Docs
+
+<img src="./assets/images/docs.png" />
