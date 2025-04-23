@@ -6,7 +6,7 @@ export function activate(context: vscode.ExtensionContext) {
   const disposable = vscode.commands.registerCommand(
     "smart-search.openSearchPopup",
     () => {
-      SearchPanel.createOrShow(context.extensionUri);
+      SearchPanel.createOrShow(context.extensionUri, context);
     }
   );
 
@@ -17,9 +17,14 @@ class SearchPanel {
   public static currentPanel: SearchPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
+  private readonly _extensionContext: vscode.ExtensionContext;
   private _disposables: vscode.Disposable[] = [];
+  private _pinnedResults: any[] = [];
 
-  public static createOrShow(extensionUri: vscode.Uri) {
+  public static createOrShow(
+    extensionUri: vscode.Uri,
+    context: vscode.ExtensionContext
+  ) {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
@@ -35,19 +40,43 @@ class SearchPanel {
       column || vscode.ViewColumn.One,
       {
         enableScripts: true,
+        retainContextWhenHidden: true,
       }
     );
 
-    SearchPanel.currentPanel = new SearchPanel(panel, extensionUri);
+    SearchPanel.currentPanel = new SearchPanel(panel, extensionUri, context);
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+  private constructor(
+    panel: vscode.WebviewPanel,
+    extensionUri: vscode.Uri,
+    context: vscode.ExtensionContext
+  ) {
     this._panel = panel;
     this._extensionUri = extensionUri;
+    this._extensionContext = context;
+
+    this._pinnedResults = this._extensionContext.globalState.get(
+      "smartSearch.pinnedResults",
+      []
+    );
 
     this._update();
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+
+    this._panel.webview.onDidReceiveMessage(
+      (message) => {
+        if (message.command === "webviewReady") {
+          this._panel.webview.postMessage({
+            command: "pinnedResults",
+            results: this._pinnedResults,
+          });
+        }
+      },
+      undefined,
+      this._disposables
+    );
 
     this._panel.webview.onDidReceiveMessage(
       async (message) => {
@@ -58,6 +87,12 @@ class SearchPanel {
           case "selectResult":
             this.handleResultSelection(message.item);
             return;
+          case "pinResult":
+            this.pinResult(message.item);
+            return;
+          case "unpinResult":
+            this.unpinResult(message.itemId);
+            return;
         }
       },
       null,
@@ -65,63 +100,128 @@ class SearchPanel {
     );
   }
 
+  private pinResult(item: any) {
+    if (!item) return;
+
+    const itemId = `${item.uri}:${item.lineNumber ?? 0}:${item.name}`;
+
+    const existingIndex = this._pinnedResults.findIndex(
+      (pinnedItem) =>
+        `${pinnedItem.uri}:${pinnedItem.lineNumber ?? 0}:${pinnedItem.name}` ===
+        itemId
+    );
+
+    if (existingIndex === -1) {
+      this._pinnedResults.push({
+        ...item,
+        id: itemId,
+        pinnedAt: new Date().getTime(),
+      });
+
+      this._extensionContext.globalState.update(
+        "smartSearch.pinnedResults",
+        this._pinnedResults
+      );
+
+      this._panel.webview.postMessage({
+        command: "pinnedResults",
+        results: this._pinnedResults,
+      });
+    }
+  }
+
+  private unpinResult(itemId: string) {
+    if (!itemId) return;
+
+    const index = this._pinnedResults.findIndex(
+      (item) => `${item.uri}:${item.lineNumber ?? 0}:${item.name}` === itemId
+    );
+
+    if (index !== -1) {
+      this._pinnedResults.splice(index, 1);
+
+      this._extensionContext.globalState.update(
+        "smartSearch.pinnedResults",
+        this._pinnedResults
+      );
+
+      this._panel.webview.postMessage({
+        command: "pinnedResults",
+        results: this._pinnedResults,
+      });
+    }
+  }
+
   private async performSearch(query: string, category: string) {
     if (!query || query.trim().length === 0) {
-      this._panel.webview.postMessage({
-        command: "searchResults",
-        results: [],
-      });
+      if (category === "pinned") {
+        this._panel.webview.postMessage({
+          command: "searchResults",
+          results: this._pinnedResults,
+        });
+      } else {
+        this._panel.webview.postMessage({
+          command: "searchResults",
+          results: [],
+        });
+      }
       return;
     }
 
     try {
       let results: any[] = [];
 
-      const fileResults = await this.searchFiles(query);
-      const textResults = await this.searchText(query);
-      const symbolResults = await this.searchSymbols(query);
-      const docResults = await this.searchDocumentation(query);
-      const configResults = await this.searchConfigFiles(query);
-      const commentResults = await this.searchComments(query);
+      if (category === "pinned") {
+        results = this._pinnedResults.filter((item) =>
+          item.name.toLowerCase().includes(query.toLowerCase())
+        );
+      } else {
+        const fileResults = await this.searchFiles(query);
+        const textResults = await this.searchText(query);
+        const symbolResults = await this.searchSymbols(query);
+        const docResults = await this.searchDocumentation(query);
+        const configResults = await this.searchConfigFiles(query);
+        const commentResults = await this.searchComments(query);
 
-      switch (category) {
-        case "all":
-          results = [
-            ...fileResults,
-            ...textResults,
-            ...symbolResults,
-            ...docResults,
-            ...configResults,
-            ...commentResults,
-          ];
-          break;
-        case "files":
-          results = fileResults;
-          break;
-        case "text":
-          results = textResults;
-          break;
-        case "symbols":
-          results = symbolResults;
-          break;
-        case "docs":
-          results = docResults;
-          break;
-        case "config":
-          results = configResults;
-          break;
-        case "comments":
-          results = commentResults;
-          break;
-        default:
-          results = [
-            ...fileResults,
-            ...textResults,
-            ...symbolResults,
-            ...docResults,
-            ...configResults,
-            ...commentResults,
-          ];
+        switch (category) {
+          case "all":
+            results = [
+              ...fileResults,
+              ...textResults,
+              ...symbolResults,
+              ...docResults,
+              ...configResults,
+              ...commentResults,
+            ];
+            break;
+          case "files":
+            results = fileResults;
+            break;
+          case "text":
+            results = textResults;
+            break;
+          case "symbols":
+            results = symbolResults;
+            break;
+          case "docs":
+            results = docResults;
+            break;
+          case "config":
+            results = configResults;
+            break;
+          case "comments":
+            results = commentResults;
+            break;
+          default:
+            results = [
+              ...fileResults,
+              ...textResults,
+              ...symbolResults,
+              ...docResults,
+              ...configResults,
+              ...commentResults,
+            ];
+        }
       }
 
       results = results.filter((item) => {
@@ -833,6 +933,12 @@ class SearchPanel {
       "icons",
       "all.svg"
     );
+    const pinnedIconPath = vscode.Uri.joinPath(
+      this._extensionUri,
+      "assets",
+      "icons",
+      "pinned.svg"
+    );
 
     const fileIconSrc = this._panel.webview
       .asWebviewUri(fileIconPath)
@@ -851,6 +957,9 @@ class SearchPanel {
       .asWebviewUri(commentIconPath)
       .toString();
     const allIconSrc = this._panel.webview.asWebviewUri(allIconPath).toString();
+    const pinnedIconSrc = this._panel.webview
+      .asWebviewUri(pinnedIconPath)
+      .toString();
 
     return `<!DOCTYPE html>
     <html lang="en">
@@ -873,7 +982,7 @@ class SearchPanel {
           padding: 10px;
         }
         .search-box {
-          width: 80%;
+          width: 90%;
           padding: 10px;
           font-size: 16px;
           margin-bottom: 10px;
@@ -919,6 +1028,8 @@ class SearchPanel {
           overflow: hidden;
           border-radius: 4px;
           font-size: 14px;
+          position: relative;
+          padding-right: 50px;
         }
         .result-item:hover {
           background-color: var(--vscode-list-hoverBackground);
@@ -945,6 +1056,7 @@ class SearchPanel {
           align-items: center;
           min-width: 0;
           flex: 1;
+          padding-right: 10px;
         }
         .result-name {
           white-space: nowrap;
@@ -960,7 +1072,7 @@ class SearchPanel {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          max-width: 200px;
+          max-width: 180px;
           flex-shrink: 0;
         }
         .results-counter {
@@ -989,6 +1101,35 @@ class SearchPanel {
           font-style: italic;
           color: var(--vscode-descriptionForeground);
           padding: 10px;
+        }
+        .pin-button {
+          opacity: 0;
+          position: absolute;
+          right: 8px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: var(--vscode-button-secondaryBackground);
+          border: none;
+          color: var(--vscode-button-secondaryForeground);
+          cursor: pointer;
+          font-size: 12px;
+          padding: 2px 6px;
+          border-radius: 3px;
+          transition: all 0.2s;
+          z-index: 2;
+          min-width: 30px;
+        }
+        .result-item:hover .pin-button {
+          opacity: 1;
+        }
+        .pin-button:hover {
+          background-color: var(--vscode-button-background);
+          color: var(--vscode-button-foreground);
+        }
+        .pinned-item .pin-button {
+          opacity: 1;
+          color: var(--vscode-button-foreground);
+          background-color: var(--vscode-button-background);
         }
       </style>
     </head>
@@ -1024,6 +1165,10 @@ class SearchPanel {
             <img src="${commentIconSrc}" alt="Comments" class="tab-icon">
             Comments
           </button>
+          <button class="tab" data-category="pinned">
+            <img src="${pinnedIconSrc}" alt="Pinned" class="tab-icon">
+            Pinned
+          </button>
         </div>
         <div class="results-counter" id="resultsCounter"></div>
         <div class="results" id="searchResults">
@@ -1038,6 +1183,7 @@ class SearchPanel {
           let searchTimeout;
           let lastSearchText = '';
           let searchResults = [];
+          let pinnedResults = [];
           let selectedResultIndex = -1;
           
           const iconSources = {
@@ -1047,19 +1193,41 @@ class SearchPanel {
             'doc': '${docIconSrc}',
             'config': '${configIconSrc}',
             'comment': '${commentIconSrc}',
-            'symbol': '${symbolIconSrc}'
+            'symbol': '${symbolIconSrc}',
+            'pinned': '${pinnedIconSrc}'
           };
           
-          const previousState = vscode.getState() || { searchText: '', category: 'all' };
+          const previousState = vscode.getState() || { searchText: '', category: 'all', pinnedResults: [] };
           currentCategory = previousState.category || 'all';
+          pinnedResults = previousState.pinnedResults || [];
+          
+          function isPinned(item) {
+            if (!item || !item.uri) return false;
+            const itemId = \`\${item.uri}:\${item.lineNumber ?? 0}:\${item.name}\`;
+            return pinnedResults.some(pinned => 
+              \`\${pinned.uri}:\${pinned.lineNumber ?? 0}:\${pinned.name}\` === itemId
+            );
+          }
+          
+          vscode.postMessage({ command: 'webviewReady' });
           
           document.addEventListener('DOMContentLoaded', () => {
             const searchInput = document.getElementById('searchInput');
+            
+            setTimeout(() => {
+              vscode.postMessage({ command: 'webviewReady' });
+            }, 200);
             
             if (previousState.searchText) {
               searchInput.value = previousState.searchText;
               lastSearchText = previousState.searchText;
               performSearch(previousState.searchText, currentCategory);
+            } else if (currentCategory === 'pinned') {
+              vscode.postMessage({
+                command: 'search',
+                text: '',
+                category: 'pinned'
+              });
             }
             
             document.querySelectorAll('.tab').forEach(tab => {
@@ -1081,14 +1249,18 @@ class SearchPanel {
               
               lastSearchText = searchText;
               
-              vscode.setState({ searchText: searchText, category: currentCategory });
+              vscode.setState({ 
+                searchText: searchText, 
+                category: currentCategory,
+                pinnedResults: pinnedResults
+              });
               
               if (searchTimeout) {
                 clearTimeout(searchTimeout);
               }
               
               searchTimeout = setTimeout(() => {
-                if (searchText) {
+                if (searchText || currentCategory === 'pinned') {
                   performSearch(searchText, currentCategory);
                 } else {
                   displayNoResults('Type to search');
@@ -1106,11 +1278,23 @@ class SearchPanel {
                 
                 currentCategory = tab.dataset.category;
                 
-                vscode.setState({ searchText: lastSearchText, category: currentCategory });
+                vscode.setState({ 
+                  searchText: lastSearchText, 
+                  category: currentCategory,
+                  pinnedResults: pinnedResults
+                });
                 
                 const searchText = searchInput.value.trim();
-                if (searchText) {
+                if (searchText || currentCategory === 'pinned') {
                   performSearch(searchText, currentCategory);
+                } else if (currentCategory === 'pinned') {
+                  vscode.postMessage({
+                    command: 'search',
+                    text: '',
+                    category: 'pinned'
+                  });
+                } else {
+                  displayNoResults('Type to search');
                 }
                 
                 searchInput.focus();
@@ -1125,7 +1309,13 @@ class SearchPanel {
               category: category
             });
             
-            displayNoResults('Searching...');
+            if (category === 'pinned' && !text) {
+              if (pinnedResults.length === 0) {
+                displayNoResults('No pinned results yet. Pin results from other tabs.');
+              }
+            } else {
+              displayNoResults('Searching...');
+            }
           }
           
           function displayNoResults(message) {
@@ -1134,12 +1324,79 @@ class SearchPanel {
             document.getElementById('resultsCounter').textContent = '';
           }
           
+          function pinResult(item, index) {
+            vscode.postMessage({
+              command: 'pinResult',
+              item: item
+            });
+            
+            const button = document.querySelector(\`.result-item[data-index="\${index}"] .pin-button\`);
+            if (button) {
+              button.textContent = "Unpin";
+              button.closest('.result-item').classList.add('pinned-item');
+            }
+            
+            const itemId = \`\${item.uri}:\${item.lineNumber ?? 0}:\${item.name}\`;
+            if (!pinnedResults.some(pinned => 
+              \`\${pinned.uri}:\${pinned.lineNumber ?? 0}:\${pinned.name}\` === itemId)) {
+              pinnedResults.push({
+                ...item,
+                id: itemId,
+                pinnedAt: new Date().getTime()
+              });
+              
+              vscode.setState({ 
+                searchText: lastSearchText, 
+                category: currentCategory,
+                pinnedResults: pinnedResults
+              });
+            }
+          }
+          
+          function unpinResult(item, index) {
+            const itemId = \`\${item.uri}:\${item.lineNumber ?? 0}:\${item.name}\`;
+            
+            vscode.postMessage({
+              command: 'unpinResult',
+              itemId: itemId
+            });
+            
+            const button = document.querySelector(\`.result-item[data-index="\${index}"] .pin-button\`);
+            if (button) {
+              button.textContent = "Pin";
+              button.closest('.result-item').classList.remove('pinned-item');
+            }
+            
+            const pinnedIndex = pinnedResults.findIndex(pinned => 
+              \`\${pinned.uri}:\${pinned.lineNumber ?? 0}:\${pinned.name}\` === itemId
+            );
+            
+            if (pinnedIndex !== -1) {
+              pinnedResults.splice(pinnedIndex, 1);
+              
+              vscode.setState({ 
+                searchText: lastSearchText, 
+                category: currentCategory,
+                pinnedResults: pinnedResults
+              });
+              
+              if (currentCategory === 'pinned') {
+                const searchInput = document.getElementById('searchInput');
+                performSearch(searchInput.value.trim(), 'pinned');
+              }
+            }
+          }
+          
           function displayResults(results) {
             const resultsContainer = document.getElementById('searchResults');
             const resultsCounter = document.getElementById('resultsCounter');
             
             if (!results || results.length === 0) {
-              displayNoResults('No results found');
+              if (currentCategory === 'pinned') {
+                displayNoResults('No pinned results yet. Pin results from other tabs.');
+              } else {
+                displayNoResults('No results found');
+              }
               return;
             }
             
@@ -1161,7 +1418,11 @@ class SearchPanel {
             selectedResultIndex = -1;
             
             if (searchResults.length === 0) {
-              displayNoResults('No valid results found');
+              if (currentCategory === 'pinned') {
+                displayNoResults('No matching pinned results.');
+              } else {
+                displayNoResults('No valid results found');
+              }
               return;
             }
             
@@ -1259,13 +1520,18 @@ class SearchPanel {
                 }
               }
               
+              const isPinnedItem = isPinned(item);
+              const pinnedClass = isPinnedItem ? 'pinned-item' : '';
+              const buttonText = isPinnedItem ? 'Unpin' : 'Pin';
+              
               html += \`
-                <div class="result-item" data-index="\${item._originalIndex}" title="\${fullName}">
+                <div class="result-item \${pinnedClass}" data-index="\${item._originalIndex}" title="\${fullName}">
                   <div class="result-icon"><img src="\${iconSrc}" alt="\${item.type}"></div>
                   <div class="result-content">
                     <div class="result-name">\${displayName}</div>
                     <div class="result-path">\${path}</div>
                   </div>
+                  <button class="pin-button">\${buttonText}</button>
                 </div>
               \`;
             });
@@ -1273,8 +1539,13 @@ class SearchPanel {
             resultsContainer.innerHTML = html;
             
             document.querySelectorAll('.result-item').forEach(item => {
-              item.addEventListener('click', () => {
-                const index = parseInt(item.dataset.index);
+              const index = parseInt(item.dataset.index);
+              
+              item.addEventListener('click', (e) => {
+                if (e.target.classList.contains('pin-button')) {
+                  return;
+                }
+                
                 vscode.postMessage({
                   command: 'selectResult',
                   item: {
@@ -1282,6 +1553,20 @@ class SearchPanel {
                     searchQuery: searchQuery
                   }
                 });
+              });
+            });
+            
+            document.querySelectorAll('.pin-button').forEach(button => {
+              button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const resultItem = button.closest('.result-item');
+                const index = parseInt(resultItem.dataset.index);
+                
+                if (resultItem.classList.contains('pinned-item')) {
+                  unpinResult(searchResults[index], index);
+                } else {
+                  pinResult(searchResults[index], index);
+                }
               });
             });
             
@@ -1300,6 +1585,41 @@ class SearchPanel {
             switch (message.command) {
               case 'searchResults':
                 displayResults(message.results);
+                break;
+              case 'pinnedResults':
+                pinnedResults = message.results;
+                vscode.setState({ 
+                  searchText: lastSearchText, 
+                  category: currentCategory,
+                  pinnedResults: pinnedResults
+                });
+                
+                if (searchResults.length > 0) {
+                  document.querySelectorAll('.result-item').forEach(item => {
+                    const index = parseInt(item.dataset.index);
+                    const resultItem = searchResults[index];
+                    if (resultItem) {
+                      const isPinnedItem = isPinned(resultItem);
+                      if (isPinnedItem) {
+                        item.classList.add('pinned-item');
+                        const pinButton = item.querySelector('.pin-button');
+                        if (pinButton) {
+                          pinButton.textContent = 'Unpin';
+                        }
+                      } else {
+                        item.classList.remove('pinned-item');
+                        const pinButton = item.querySelector('.pin-button');
+                        if (pinButton) {
+                          pinButton.textContent = 'Pin';
+                        }
+                      }
+                    }
+                  });
+                }
+                
+                if (currentCategory === 'pinned') {
+                  displayResults(pinnedResults);
+                }
                 break;
             }
           });
@@ -1348,6 +1668,17 @@ class SearchPanel {
                   searchQuery: searchQuery
                 }
               });
+            } else if (e.key === 'p' && (e.ctrlKey || e.metaKey) && selectedResultIndex >= 0) {
+              e.preventDefault();
+              
+              const resultItem = resultElements[selectedResultIndex];
+              const isPinnedItem = resultItem.classList.contains('pinned-item');
+              
+              if (isPinnedItem) {
+                unpinResult(searchResults[selectedResultIndex], selectedResultIndex);
+              } else {
+                pinResult(searchResults[selectedResultIndex], selectedResultIndex);
+              }
             }
           });
         })();
