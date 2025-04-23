@@ -237,7 +237,8 @@ class SearchPanel {
         if (
           item.type === "text" ||
           item.type === "doc" ||
-          item.type === "config"
+          item.type === "config" ||
+          item.type === "comment"
         ) {
           const contentWithoutQuery = item.name
             .replace(new RegExp(query, "gi"), "")
@@ -600,37 +601,57 @@ class SearchPanel {
       let match;
       while ((match = regex.exec(text)) !== null) {
         const comment = match[0];
+        const cleanedComment = comment
+          .replace(/^\/\*+/, "")
+          .replace(/\*+\/$/, "")
+          .trim();
+
         const lineNumber =
           text.substring(0, match.index).split("\n").length - 1;
-        comments.push({ text: comment, lineNumber });
+
+        if (cleanedComment.length > 0) {
+          comments.push({ text: cleanedComment, lineNumber });
+        }
       }
-    } else if (fileExt === "py") {
-      const regex =
-        /(['"])(['"])\1[\s\S]*?\1\2\1|(['"])(['"])\3[\s\S]*?\3\4\3/g;
-      let match;
-      while ((match = regex.exec(text)) !== null) {
-        const comment = match[0];
-        const lineNumber =
-          text.substring(0, match.index).split("\n").length - 1;
-        comments.push({ text: comment, lineNumber });
+    }
+    else if (fileExt === "py") {
+      const regexes = [/'''[\s\S]*?'''/g, /"""[\s\S]*?"""/g];
+      for (const regex of regexes) {
+        let match;
+        while ((match = regex.exec(text)) !== null) {
+          const comment = match[0];
+          const quoteType = comment.startsWith('"""') ? '"""' : "'''";
+          const cleanedComment = comment
+            .substring(quoteType.length, comment.length - quoteType.length)
+            .trim();
+
+          const lineNumber =
+            text.substring(0, match.index).split("\n").length - 1;
+
+          if (cleanedComment.length > 0) {
+            comments.push({ text: cleanedComment, lineNumber });
+          }
+        }
       }
-    } else if (["html", "xml", "svg"].includes(fileExt)) {
+    }
+    else if (
+      ["html", "xml", "svg", "md", "mdx", "markdown"].includes(fileExt)
+    ) {
       const regex = /<!--[\s\S]*?-->/g;
       let match;
       while ((match = regex.exec(text)) !== null) {
         const comment = match[0];
+        const cleanedComment = comment
+          .replace(/^<!--\s*/, "")
+          .replace(/\s*-->$/, "")
+          .trim();
+
         const lineNumber =
           text.substring(0, match.index).split("\n").length - 1;
-        comments.push({ text: comment, lineNumber });
-      }
-    } else if (["md", "mdx", "markdown"].includes(fileExt)) {
-      const regex = /<!--[\s\S]*?-->/g;
-      let match;
-      while ((match = regex.exec(text)) !== null) {
-        const comment = match[0];
-        const lineNumber =
-          text.substring(0, match.index).split("\n").length - 1;
-        comments.push({ text: comment, lineNumber });
+
+        if (cleanedComment.length > 0) {
+          comments.push({ text: cleanedComment, lineNumber });
+        }
       }
     }
 
@@ -656,7 +677,19 @@ class SearchPanel {
         "**/node_modules/**"
       );
 
-      const filesToSearch = files.slice(0, 25);
+      const filesToSearch = files
+        .filter((file) => {
+          const fileName = file.path.toLowerCase();
+          const queryLower = query.toLowerCase();
+
+          const baseName = fileName.substring(fileName.lastIndexOf("/") + 1);
+          if (baseName.includes(queryLower)) {
+            return false;
+          }
+
+          return true;
+        })
+        .slice(0, 25);
 
       for (const file of filesToSearch) {
         try {
@@ -712,52 +745,94 @@ class SearchPanel {
             multilineComments.map((c) => c.lineNumber)
           );
 
-          const patterns: RegExp[] =
-            this.getCommentPatternsForExtension(fileExt);
-
           for (let i = 0; i < lines.length; i++) {
             if (multilineLineNumbers.has(i)) {
               continue;
             }
 
             const line = lines[i].trim();
-
             if (!line) continue;
 
             let isComment = false;
-            for (const pattern of patterns) {
-              if (pattern.test(line)) {
+            let commentStart = -1;
+
+            if (line.startsWith("//")) {
+              isComment = true;
+              commentStart = 2;
+            }
+            else if (line.startsWith("#")) {
+              isComment = true;
+              commentStart = 1;
+            }
+            else if (line.startsWith("<!--")) {
+              isComment = true;
+              commentStart = 4;
+            }
+            else if (line.startsWith("--")) {
+              isComment = true;
+              commentStart = 2;
+            }
+            else if (line.startsWith(";")) {
+              isComment = true;
+              commentStart = 1;
+            }
+            else if (line.startsWith("/*") && line.endsWith("*/")) {
+              isComment = true;
+              commentStart = 2;
+              const endMarker = line.lastIndexOf("*/");
+              if (endMarker > 2) {
+                const commentText = line
+                  .substring(commentStart, endMarker)
+                  .trim();
+
+                if (commentText.toLowerCase().includes(query.toLowerCase())) {
+                  const uniqueKey = `${file.toString()}:${i}:${commentText}`;
+                  if (!processedLines.has(uniqueKey)) {
+                    processedLines.add(uniqueKey);
+                    commentResults.push({
+                      type: "comment",
+                      name: commentText,
+                      path: vscode.workspace.asRelativePath(file),
+                      uri: file.toString(),
+                      lineNumber: i,
+                    });
+
+                    if (commentResults.length >= 50) {
+                      break;
+                    }
+                  }
+                }
+                continue;
+              }
+            } else if (line.startsWith("*") && !line.startsWith("*/")) {
+              if (
+                i > 0 &&
+                (lines[i - 1].trim().startsWith("/*") ||
+                  lines[i - 1].trim().startsWith("*"))
+              ) {
                 isComment = true;
-                break;
+                commentStart = 1;
               }
             }
 
-            if (isComment && line.toLowerCase().includes(query.toLowerCase())) {
-              let displayText = line;
-              if (isMarkdown) {
-                if (line.startsWith("<!--") && line.endsWith("-->")) {
-                  displayText = line.substring(4, line.length - 3).trim();
-                } else if (
-                  line.startsWith("[comment]:") ||
-                  line.startsWith("[//]:")
-                ) {
-                  displayText = line.substring(line.indexOf("#") + 1).trim();
-                }
-              }
+            if (isComment && commentStart >= 0) {
+              let commentText = line.substring(commentStart).trim();
 
-              const uniqueKey = `${file.toString()}:${i}:${displayText}`;
-              if (!processedLines.has(uniqueKey)) {
-                processedLines.add(uniqueKey);
-                commentResults.push({
-                  type: "comment",
-                  name: displayText,
-                  path: vscode.workspace.asRelativePath(file),
-                  uri: file.toString(),
-                  lineNumber: i,
-                });
+              if (commentText.toLowerCase().includes(query.toLowerCase())) {
+                const uniqueKey = `${file.toString()}:${i}:${commentText}`;
+                if (!processedLines.has(uniqueKey)) {
+                  processedLines.add(uniqueKey);
+                  commentResults.push({
+                    type: "comment",
+                    name: commentText,
+                    path: vscode.workspace.asRelativePath(file),
+                    uri: file.toString(),
+                    lineNumber: i,
+                  });
 
-                if (commentResults.length >= 50) {
-                  break;
+                  if (commentResults.length >= 50) {
+                    break;
+                  }
                 }
               }
             }
@@ -775,9 +850,18 @@ class SearchPanel {
   }
 
   private getCommentPatternsForExtension(ext: string): RegExp[] {
-    const commonPatterns = [/^\s*\/\/.*/, /^\s*#.*/];
-
     switch (ext) {
+      case "js":
+      case "ts":
+      case "jsx":
+      case "tsx":
+        return [
+          /^\s*\/\/.*$/,
+          /^\s*\/\*.*\*\/\s*$/,
+          /^\s*\/\*.*$/,
+          /^\s*\*\/\s*$/,
+          /^\s*\*[^/].*$/,
+        ];
       case "py":
         return [/^\s*#.*/, /^\s*""".*/, /^\s*'''.*/, /^\s*"""/];
       case "rb":
@@ -810,8 +894,40 @@ class SearchPanel {
         return [/^\s*;.*/];
       case "vim":
         return [/^\s*".*/];
+      case "c":
+      case "cpp":
+      case "h":
+      case "hpp":
+      case "cs":
+      case "java":
+      case "swift":
+      case "kt":
+      case "scala":
+        return [
+          /^\s*\/\/.*$/,
+          /^\s*\/\*.*\*\/\s*$/,
+          /^\s*\/\*.*$/,
+          /^\s*\*\/\s*$/,
+          /^\s*\*[^/].*$/,
+        ];
+      case "php":
+        return [
+          /^\s*\/\/.*$/,
+          /^\s*#.*$/,
+          /^\s*\/\*.*\*\/\s*$/,
+          /^\s*\/\*.*$/,
+          /^\s*\*\/\s*$/,
+          /^\s*\*[^/].*$/,
+        ];
       default:
-        return [/^\s*\/\/.*/, /^\s*\/\*.*/, /^\s*\*\//, /^\s*\*.*/, /^\s*#.*/];
+        return [
+          /^\s*\/\/.*$/,
+          /^\s*\/\*.*\*\/\s*$/,
+          /^\s*\/\*.*$/,
+          /^\s*\*\/\s*$/,
+          /^\s*\*[^/].*$/,
+          /^\s*#.*$/,
+        ];
     }
   }
 
