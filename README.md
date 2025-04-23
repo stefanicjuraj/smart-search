@@ -38,3 +38,7 @@ An extension for advanced search functionality. The extension supports the follo
 ### Text
 
 <img src="./assets/images/text.png" />
+
+### Symbols
+
+<img src="./assets/images/symbols.png" />
