@@ -46,3 +46,7 @@ An extension for advanced search functionality. The extension supports the follo
 ### Docs
 
 <img src="./assets/images/docs.png" />
+
+### Config
+
+<img src="./assets/images/config.png" />
