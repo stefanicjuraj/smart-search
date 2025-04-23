@@ -50,3 +50,7 @@ An extension for advanced search functionality. The extension supports the follo
 ### Config
 
 <img src="./assets/images/config.png" />
+
+### Pinned
+
+<img src="./assets/images/pinned.png" />
