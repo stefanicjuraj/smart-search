@@ -34,3 +34,7 @@ An extension for advanced search functionality. The extension supports the follo
 ### Files
 
 <img src="./assets/images/files.png" />
+
+### Text
+
+<img src="./assets/images/text.png" />
