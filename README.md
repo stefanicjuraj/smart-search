@@ -30,3 +30,7 @@ An extension for advanced search functionality. The extension supports the follo
 ## Examples
 
 <img src="./assets/images/search-results.png" />
+
+### Files
+
+<img src="./assets/images/files.png" />
