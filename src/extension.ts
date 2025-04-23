@@ -613,8 +613,7 @@ class SearchPanel {
           comments.push({ text: cleanedComment, lineNumber });
         }
       }
-    }
-    else if (fileExt === "py") {
+    } else if (fileExt === "py") {
       const regexes = [/'''[\s\S]*?'''/g, /"""[\s\S]*?"""/g];
       for (const regex of regexes) {
         let match;
@@ -633,8 +632,7 @@ class SearchPanel {
           }
         }
       }
-    }
-    else if (
+    } else if (
       ["html", "xml", "svg", "md", "mdx", "markdown"].includes(fileExt)
     ) {
       const regex = /<!--[\s\S]*?-->/g;
@@ -759,24 +757,19 @@ class SearchPanel {
             if (line.startsWith("//")) {
               isComment = true;
               commentStart = 2;
-            }
-            else if (line.startsWith("#")) {
+            } else if (line.startsWith("#")) {
               isComment = true;
               commentStart = 1;
-            }
-            else if (line.startsWith("<!--")) {
+            } else if (line.startsWith("<!--")) {
               isComment = true;
               commentStart = 4;
-            }
-            else if (line.startsWith("--")) {
+            } else if (line.startsWith("--")) {
               isComment = true;
               commentStart = 2;
-            }
-            else if (line.startsWith(";")) {
+            } else if (line.startsWith(";")) {
               isComment = true;
               commentStart = 1;
-            }
-            else if (line.startsWith("/*") && line.endsWith("*/")) {
+            } else if (line.startsWith("/*") && line.endsWith("*/")) {
               isComment = true;
               commentStart = 2;
               const endMarker = line.lastIndexOf("*/");
@@ -1197,6 +1190,15 @@ class SearchPanel {
           margin-bottom: 8px;
           padding-left: 2px;
         }
+        .results-details {
+          margin-left: 5px;
+          font-size: 12px;
+          opacity: 0.8;
+          padding: 2px 5px;
+          border-radius: 3px;
+          background-color: var(--vscode-badge-background);
+          color: var(--vscode-badge-foreground);
+        }
         .line-number {
           font-size: 12px;
           color: var(--vscode-badge-foreground);
@@ -1246,6 +1248,48 @@ class SearchPanel {
           opacity: 1;
           color: var(--vscode-button-foreground);
           background-color: var(--vscode-button-background);
+        }
+        .category-badges {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          position: absolute;
+          right: 50px;
+          top: 50%;
+          transform: translateY(-50%);
+        }
+        .category-badge {
+          display: flex;
+          align-items: center;
+          font-size: 12px;
+          background: var(--vscode-button-secondaryBackground);
+          border: none;
+          color: var(--vscode-button-secondaryForeground);
+          cursor: pointer;
+          padding: 2px 6px;
+          border-radius: 3px;
+          transition: all 0.2s;
+          min-width: 30px;
+          height: 22px;
+          opacity: 1;
+        }
+        .category-badge:hover {
+          background-color: var(--vscode-button-background);
+          color: var(--vscode-button-foreground);
+        }
+        .category-badge img {
+          width: 12px;
+          height: 12px;
+          margin-right: 4px;
+        }
+        .multi-category {
+          padding-right: 120px;
+        }
+        .multi-category .result-icon {
+          margin-left: 0;
+        }
+        .multi-category .pin-button {
+          right: 8px;
         }
       </style>
     </head>
@@ -1430,7 +1474,7 @@ class SearchPanel {
                 displayNoResults('No pinned results yet. Pin results from other tabs.');
               }
             } else {
-              displayNoResults('Searching...');
+              displayNoResults('Searching... This might take a moment.');
             }
           }
           
@@ -1542,8 +1586,6 @@ class SearchPanel {
               return;
             }
             
-            resultsCounter.textContent = \`\${searchResults.length} result\${searchResults.length === 1 ? '' : 's'}\`;
-            
             searchResults.forEach((item, idx) => {
               item._originalIndex = idx;
             });
@@ -1551,114 +1593,283 @@ class SearchPanel {
             let html = '';
             const searchQuery = document.getElementById('searchInput').value.trim();
             
-            searchResults.forEach((item) => {
-              const iconSrc = iconSources[item.type] || '';
-              let path = item.path || '';
-              
-              let displayName = item.name;
-              let fullName = item.name;
-              
-              const escapeHtml = (text) => {
-                return text
-                  .replace(/&/g, '&amp;')
-                  .replace(/</g, '&lt;')
-                  .replace(/>/g, '&gt;')
-                  .replace(/"/g, '&quot;')
-                  .replace(/'/g, '&#039;');
-              };
-              
-              if (item.name && searchQuery) {
-                fullName = escapeHtml(item.name);
+            const groupedResults = new Map();
+            
+            if (currentCategory === 'all') {
+              searchResults.forEach((item) => {
+                const key = \`\${item.uri}:\${item.lineNumber ?? 0}\`;
                 
-                if (item.name.length > 80 && searchQuery.length > 0) {
-                  const lowerName = item.name.toLowerCase();
-                  const lowerQuery = searchQuery.toLowerCase();
-                  const matchIndex = lowerName.indexOf(lowerQuery);
+                if (!groupedResults.has(key)) {
+                  groupedResults.set(key, {
+                    mainItem: item,
+                    categories: [item.type],
+                    indices: [item._originalIndex]
+                  });
+                } else {
+                  const group = groupedResults.get(key);
+                  if (!group.categories.includes(item.type)) {
+                    group.categories.push(item.type);
+                  }
+                  group.indices.push(item._originalIndex);
+                }
+              });
+            }
+            
+            if (currentCategory === 'all' && groupedResults.size > 0) {
+              const uniqueCount = groupedResults.size;
+              const totalCount = searchResults.length;
+              const duplicateCount = totalCount - uniqueCount;
+              
+              if (duplicateCount > 0) {
+                resultsCounter.textContent = \`\${uniqueCount} unique results \`;
+                const detailsSpan = document.createElement('span');
+                detailsSpan.className = 'results-details';
+                detailsSpan.textContent = \`\${totalCount} total across categories\`;
+                resultsCounter.appendChild(detailsSpan);
+              } else {
+                resultsCounter.textContent = \`\${searchResults.length} result\${searchResults.length === 1 ? '' : 's'}\`;
+              }
+            } else {
+              resultsCounter.textContent = \`\${searchResults.length} result\${searchResults.length === 1 ? '' : 's'}\`;
+            }
+            
+            if (currentCategory === 'all' && groupedResults.size > 0) {
+              for (const [key, group] of groupedResults.entries()) {
+                const item = group.mainItem;
+                const iconSrc = iconSources[item.type] || '';
+                let path = item.path || '';
+                
+                let displayName = item.name;
+                let fullName = item.name;
+                
+                const escapeHtml = (text) => {
+                  return text
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+                };
+                
+                if (item.name && searchQuery) {
+                  fullName = escapeHtml(item.name);
                   
-                  if (matchIndex !== -1) {
-                    let startPos = Math.max(0, matchIndex - 40);
-                    let endPos = Math.min(item.name.length, matchIndex + searchQuery.length + 40);
+                  if (item.name.length > 80 && searchQuery.length > 0) {
+                    const lowerName = item.name.toLowerCase();
+                    const lowerQuery = searchQuery.toLowerCase();
+                    const matchIndex = lowerName.indexOf(lowerQuery);
                     
-                    if (startPos > 0) {
-                      const prevSpace = item.name.lastIndexOf(' ', startPos);
-                      if (prevSpace !== -1 && startPos - prevSpace < 10) {
-                        startPos = prevSpace + 1;
+                    if (matchIndex !== -1) {
+                      let startPos = Math.max(0, matchIndex - 40);
+                      let endPos = Math.min(item.name.length, matchIndex + searchQuery.length + 40);
+                      
+                      if (startPos > 0) {
+                        const prevSpace = item.name.lastIndexOf(' ', startPos);
+                        if (prevSpace !== -1 && startPos - prevSpace < 10) {
+                          startPos = prevSpace + 1;
+                        }
                       }
-                    }
-                    
-                    if (endPos < item.name.length) {
-                      const nextSpace = item.name.indexOf(' ', endPos);
-                      if (nextSpace !== -1 && nextSpace - endPos < 10) {
-                        endPos = nextSpace;
+                      
+                      if (endPos < item.name.length) {
+                        const nextSpace = item.name.indexOf(' ', endPos);
+                        if (nextSpace !== -1 && nextSpace - endPos < 10) {
+                          endPos = nextSpace;
+                        }
                       }
+                      
+                      let contextString = item.name.substring(startPos, endPos);
+                      
+                      if (startPos > 0) contextString = '...' + contextString;
+                      if (endPos < item.name.length) contextString += '...';
+                      
+                      const tempElement = document.createElement('div');
+                      tempElement.textContent = contextString;
+                      const htmlContextString = tempElement.innerHTML;
+                      
+                      const highlightedString = htmlContextString.replace(
+                        new RegExp(escapeHtml(searchQuery), 'gi'),
+                        match => \`<mark style="background-color: var(--vscode-editor-findMatchHighlightBackground); color: var(--vscode-editor-findMatchHighlightForeground);">\${match}</mark>\`
+                      );
+                      
+                      displayName = highlightedString;
+                    } else {
+                      displayName = item.name.substring(0, 80) + '...';
                     }
-                    
-                    let contextString = item.name.substring(startPos, endPos);
-                    
-                    if (startPos > 0) contextString = '...' + contextString;
-                    if (endPos < item.name.length) contextString += '...';
-                    
+                  } else {
                     const tempElement = document.createElement('div');
-                    tempElement.textContent = contextString;
-                    const htmlContextString = tempElement.innerHTML;
+                    tempElement.textContent = item.name;
+                    const htmlString = tempElement.innerHTML;
                     
-                    const highlightedString = htmlContextString.replace(
+                    displayName = htmlString.replace(
                       new RegExp(escapeHtml(searchQuery), 'gi'),
                       match => \`<mark style="background-color: var(--vscode-editor-findMatchHighlightBackground); color: var(--vscode-editor-findMatchHighlightForeground);">\${match}</mark>\`
                     );
-                    
-                    displayName = highlightedString;
-                  } else {
-                    displayName = item.name.substring(0, 80) + '...';
+                  }
+                  
+                  if ((item.type === 'text' || item.type === 'doc' || item.type === 'config' || item.type === 'comment') && typeof item.lineNumber === 'number') {
+                    displayName = \`<span class="line-number">\${item.lineNumber + 1}</span> \${displayName}\`;
+                  } else if (item.type === 'symbol' && item.kindName) {
+                    displayName = \`<span class="symbol-badge">\${item.kindName}</span> \${displayName}\`;
                   }
                 } else {
-                  const tempElement = document.createElement('div');
-                  tempElement.textContent = item.name;
-                  const htmlString = tempElement.innerHTML;
-                  
-                  displayName = htmlString.replace(
-                    new RegExp(escapeHtml(searchQuery), 'gi'),
-                    match => \`<mark style="background-color: var(--vscode-editor-findMatchHighlightBackground); color: var(--vscode-editor-findMatchHighlightForeground);">\${match}</mark>\`
-                  );
+                  fullName = escapeHtml(item.name);
+                  if ((item.type === 'text' || item.type === 'doc' || item.type === 'config' || item.type === 'comment') && typeof item.lineNumber === 'number') {
+                    displayName = \`<span class="line-number">\${item.lineNumber + 1}</span> \${item.name}\`;
+                  } else if (item.type === 'symbol' && item.kindName) {
+                    displayName = \`<span class="symbol-badge">\${item.kindName}</span> \${item.name}\`;
+                  }
                 }
                 
-                if ((item.type === 'text' || item.type === 'doc' || item.type === 'config' || item.type === 'comment') && typeof item.lineNumber === 'number') {
-                  displayName = \`<span class="line-number">\${item.lineNumber + 1}</span> \${displayName}\`;
-                } else if (item.type === 'symbol' && item.kindName) {
-                  displayName = \`<span class="symbol-badge">\${item.kindName}</span> \${displayName}\`;
+                const isPinnedItem = isPinned(item);
+                const pinnedClass = isPinnedItem ? 'pinned-item' : '';
+                const buttonText = isPinnedItem ? 'Unpin' : 'Pin';
+                
+                let categoryBadges = '';
+                if (group.categories.length > 1) {
+                  categoryBadges = '<div class="category-badges">';
+                  group.categories.forEach(category => {
+                    if (category !== item.type) {
+                      const iconSrc = iconSources[category] || '';
+                      let displayCategory = category;
+                      if (category === 'file') displayCategory = 'Files';
+                      else if (category === 'text') displayCategory = 'Text';
+                      else if (category === 'doc') displayCategory = 'Docs';
+                      else if (category === 'config') displayCategory = 'Config';
+                      else if (category === 'comment') displayCategory = 'Comments';
+                      else if (category === 'symbol') displayCategory = 'Symbols';
+                      
+                      categoryBadges += \`<span class="category-badge" title="Also appears in \${displayCategory}"><img src="\${iconSrc}" alt="\${category}">\${displayCategory}</span>\`;
+                    }
+                  });
+                  categoryBadges += '</div>';
                 }
-              } else {
-                fullName = escapeHtml(item.name);
-                if ((item.type === 'text' || item.type === 'doc' || item.type === 'config' || item.type === 'comment') && typeof item.lineNumber === 'number') {
-                  displayName = \`<span class="line-number">\${item.lineNumber + 1}</span> \${item.name}\`;
-                } else if (item.type === 'symbol' && item.kindName) {
-                  displayName = \`<span class="symbol-badge">\${item.kindName}</span> \${item.name}\`;
-                }
-              }
-              
-              const isPinnedItem = isPinned(item);
-              const pinnedClass = isPinnedItem ? 'pinned-item' : '';
-              const buttonText = isPinnedItem ? 'Unpin' : 'Pin';
-              
-              html += \`
-                <div class="result-item \${pinnedClass}" data-index="\${item._originalIndex}" title="\${fullName}">
-                  <div class="result-icon"><img src="\${iconSrc}" alt="\${item.type}"></div>
-                  <div class="result-content">
-                    <div class="result-name">\${displayName}</div>
-                    <div class="result-path">\${path}</div>
+                
+                html += \`
+                  <div class="result-item \${pinnedClass}\${group.categories.length > 1 ? ' multi-category' : ''}\" 
+                       data-index="\${item._originalIndex}\" 
+                       data-indices="\${group.indices.join(',')}"
+                       title="\${fullName}">
+                    <div class="result-icon"><img src="\${iconSrc}" alt="\${item.type}"></div>
+                    <div class="result-content">
+                      <div class="result-name">\${displayName}</div>
+                      <div class="result-path">\${path}</div>
+                      \${categoryBadges}
+                    </div>
+                    <button class="pin-button">\${buttonText}</button>
                   </div>
-                  <button class="pin-button">\${buttonText}</button>
-                </div>
-              \`;
-            });
+                \`;
+              }
+            } else {
+              searchResults.forEach((item) => {
+                const iconSrc = iconSources[item.type] || '';
+                let path = item.path || '';
+                
+                let displayName = item.name;
+                let fullName = item.name;
+                
+                const escapeHtml = (text) => {
+                  return text
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+                };
+                
+                if (item.name && searchQuery) {
+                  fullName = escapeHtml(item.name);
+                  
+                  if (item.name.length > 80 && searchQuery.length > 0) {
+                    const lowerName = item.name.toLowerCase();
+                    const lowerQuery = searchQuery.toLowerCase();
+                    const matchIndex = lowerName.indexOf(lowerQuery);
+                    
+                    if (matchIndex !== -1) {
+                      let startPos = Math.max(0, matchIndex - 40);
+                      let endPos = Math.min(item.name.length, matchIndex + searchQuery.length + 40);
+                      
+                      if (startPos > 0) {
+                        const prevSpace = item.name.lastIndexOf(' ', startPos);
+                        if (prevSpace !== -1 && startPos - prevSpace < 10) {
+                          startPos = prevSpace + 1;
+                        }
+                      }
+                      
+                      if (endPos < item.name.length) {
+                        const nextSpace = item.name.indexOf(' ', endPos);
+                        if (nextSpace !== -1 && nextSpace - endPos < 10) {
+                          endPos = nextSpace;
+                        }
+                      }
+                      
+                      let contextString = item.name.substring(startPos, endPos);
+                      
+                      if (startPos > 0) contextString = '...' + contextString;
+                      if (endPos < item.name.length) contextString += '...';
+                      
+                      const tempElement = document.createElement('div');
+                      tempElement.textContent = contextString;
+                      const htmlContextString = tempElement.innerHTML;
+                      
+                      const highlightedString = htmlContextString.replace(
+                        new RegExp(escapeHtml(searchQuery), 'gi'),
+                        match => \`<mark style="background-color: var(--vscode-editor-findMatchHighlightBackground); color: var(--vscode-editor-findMatchHighlightForeground);">\${match}</mark>\`
+                      );
+                      
+                      displayName = highlightedString;
+                    } else {
+                      displayName = item.name.substring(0, 80) + '...';
+                    }
+                  } else {
+                    const tempElement = document.createElement('div');
+                    tempElement.textContent = item.name;
+                    const htmlString = tempElement.innerHTML;
+                    
+                    displayName = htmlString.replace(
+                      new RegExp(escapeHtml(searchQuery), 'gi'),
+                      match => \`<mark style="background-color: var(--vscode-editor-findMatchHighlightBackground); color: var(--vscode-editor-findMatchHighlightForeground);">\${match}</mark>\`
+                    );
+                  }
+                  
+                  if ((item.type === 'text' || item.type === 'doc' || item.type === 'config' || item.type === 'comment') && typeof item.lineNumber === 'number') {
+                    displayName = \`<span class="line-number">\${item.lineNumber + 1}</span> \${displayName}\`;
+                  } else if (item.type === 'symbol' && item.kindName) {
+                    displayName = \`<span class="symbol-badge">\${item.kindName}</span> \${displayName}\`;
+                  }
+                } else {
+                  fullName = escapeHtml(item.name);
+                  if ((item.type === 'text' || item.type === 'doc' || item.type === 'config' || item.type === 'comment') && typeof item.lineNumber === 'number') {
+                    displayName = \`<span class="line-number">\${item.lineNumber + 1}</span> \${item.name}\`;
+                  } else if (item.type === 'symbol' && item.kindName) {
+                    displayName = \`<span class="symbol-badge">\${item.kindName}</span> \${item.name}\`;
+                  }
+                }
+                
+                const isPinnedItem = isPinned(item);
+                const pinnedClass = isPinnedItem ? 'pinned-item' : '';
+                const buttonText = isPinnedItem ? 'Unpin' : 'Pin';
+                
+                html += \`
+                  <div class="result-item \${pinnedClass}" data-index="\${item._originalIndex}" title="\${fullName}">
+                    <div class="result-icon"><img src="\${iconSrc}" alt="\${item.type}"></div>
+                    <div class="result-content">
+                      <div class="result-name">\${displayName}</div>
+                      <div class="result-path">\${path}</div>
+                    </div>
+                    <button class="pin-button">\${buttonText}</button>
+                  </div>
+                \`;
+              });
+            }
             
             resultsContainer.innerHTML = html;
             
             document.querySelectorAll('.result-item').forEach(item => {
               const index = parseInt(item.dataset.index);
+              const indices = item.dataset.indices ? item.dataset.indices.split(',').map(i => parseInt(i)) : [index];
               
               item.addEventListener('click', (e) => {
-                if (e.target.classList.contains('pin-button')) {
+                if (e.target.classList.contains('pin-button') || e.target.classList.contains('category-badge')) {
                   return;
                 }
                 
@@ -1682,6 +1893,27 @@ class SearchPanel {
                   unpinResult(searchResults[index], index);
                 } else {
                   pinResult(searchResults[index], index);
+                }
+              });
+            });
+            
+            document.querySelectorAll('.category-badge').forEach(badge => {
+              badge.addEventListener('click', (e) => {
+                e.stopPropagation();
+                
+                const img = badge.querySelector('img');
+                const category = img ? img.getAttribute('alt') : null;
+                
+                if (category) {
+                  document.querySelectorAll('.tab').forEach(tab => {
+                    if (tab.dataset.category === category || 
+                        (category === 'doc' && tab.dataset.category === 'docs') ||
+                        (category === 'file' && tab.dataset.category === 'files') ||
+                        (category === 'symbol' && tab.dataset.category === 'symbols') ||
+                        (category === 'comment' && tab.dataset.category === 'comments')) {
+                      tab.click();
+                    }
+                  });
                 }
               });
             });
