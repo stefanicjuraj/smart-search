@@ -29,14 +29,12 @@
       {
         "command": "smart-search.openSearchPopup",
         "key": "ctrl+alt+f",
-        "mac": "cmd+alt+f",
-        "when": "editorTextFocus || editorFocus"
+        "mac": "cmd+alt+f"
       },
       {
         "command": "smart-search.openSearchPopup",
         "key": "ctrl+k",
-        "mac": "cmd+k",
-        "when": "editorTextFocus || editorFocus"
+        "mac": "cmd+k"
       }
     ]
   },
