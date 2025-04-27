@@ -783,9 +783,7 @@ class SearchPanel {
                 });
               }
               lineCounter += source.split(/\r?\n/).length;
-            }
-
-            else if (cell.cell_type === "code" && cell.source) {
+            } else if (cell.cell_type === "code" && cell.source) {
               const source = Array.isArray(cell.source)
                 ? cell.source.join("")
                 : cell.source;
@@ -998,8 +996,7 @@ class SearchPanel {
                               content: cleanLine,
                             });
                           }
-                        }
-                        else if (cell.cell_type === "markdown") {
+                        } else if (cell.cell_type === "markdown") {
                           if (cleanLine.length > 0) {
                             lines.push(cleanLine);
                             lineMap.push({
