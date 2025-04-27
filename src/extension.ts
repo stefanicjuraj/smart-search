@@ -65,6 +65,16 @@ class SearchPanel {
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
+    this._panel.onDidChangeViewState(
+      (e) => {
+        if (this._panel.visible) {
+          this._panel.webview.postMessage({ command: "focusSearchInput" });
+        }
+      },
+      null,
+      this._disposables
+    );
+
     this._panel.webview.onDidReceiveMessage(
       (message) => {
         if (message.command === "webviewReady") {
@@ -1116,10 +1126,26 @@ class SearchPanel {
           display: flex;
           align-items: center;
           gap: 6px;
+          position: relative;
         }
         .tab.active {
           border-bottom: 2px solid var(--vscode-focusBorder);
           font-weight: bold;
+        }
+        .tab.active::after {
+          content: '';
+          position: absolute;
+          top: -2px;
+          right: 4px;
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background-color: var(--vscode-badge-background);
+        }
+        .tab-shortcuts {
+          font-size: 13px;
+          color: var(--vscode-descriptionForeground);
+          margin: 0 0 4px 4px;
         }
         .tab-icon {
           width: 16px;
@@ -1296,6 +1322,7 @@ class SearchPanel {
     <body>
       <div class="container">
         <input type="text" class="search-box" id="searchInput" placeholder="Search..." autofocus>
+        <div class="tab-shortcuts">←/→: Navigate categories | ↑/↓: Navigate results</div>
         <div class="tabs">
           <button class="tab active" data-category="all">
             <img src="${allIconSrc}" alt="All" class="tab-icon">
@@ -1374,9 +1401,21 @@ class SearchPanel {
           document.addEventListener('DOMContentLoaded', () => {
             const searchInput = document.getElementById('searchInput');
             
+            searchInput.focus();
+            
             setTimeout(() => {
+              searchInput.focus();
               vscode.postMessage({ command: 'webviewReady' });
             }, 200);
+            
+            document.querySelector('.container').addEventListener('click', (e) => {
+              if (!e.target.closest('.result-item') && 
+                  !e.target.closest('.tab') && 
+                  !e.target.closest('.pin-button') &&
+                  !e.target.closest('.category-badge')) {
+                searchInput.focus();
+              }
+            });
             
             if (previousState.searchText) {
               searchInput.value = previousState.searchText;
@@ -1397,8 +1436,6 @@ class SearchPanel {
                 tab.classList.remove('active');
               }
             });
-            
-            searchInput.focus();
             
             searchInput.addEventListener('input', () => {
               const searchText = searchInput.value.trim();
@@ -1969,12 +2006,104 @@ class SearchPanel {
                   displayResults(pinnedResults);
                 }
                 break;
+              case 'focusSearchInput':
+                const searchInput = document.getElementById('searchInput');
+                if (searchInput) {
+                  searchInput.focus();
+                }
+                break;
             }
           });
 
           document.addEventListener('keydown', (e) => {
             const searchInput = document.getElementById('searchInput');
             const activeElement = document.activeElement;
+            
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              
+              const tabs = document.querySelectorAll('.tab');
+              const activeTabIndex = Array.from(tabs).findIndex(tab => tab.classList.contains('active'));
+              
+              if (activeTabIndex !== -1) {
+                tabs[activeTabIndex].classList.remove('active');
+                
+                let nextTabIndex = e.shiftKey ? activeTabIndex - 1 : activeTabIndex + 1;
+                
+                if (nextTabIndex < 0) {
+                  nextTabIndex = tabs.length - 1;
+                } else if (nextTabIndex >= tabs.length) {
+                  nextTabIndex = 0;
+                }
+                
+                tabs[nextTabIndex].classList.add('active');
+                currentCategory = tabs[nextTabIndex].dataset.category;
+                
+                vscode.setState({ 
+                  searchText: lastSearchText, 
+                  category: currentCategory,
+                  pinnedResults: pinnedResults
+                });
+                
+                const searchText = searchInput.value.trim();
+                if (searchText || currentCategory === 'pinned') {
+                  performSearch(searchText, currentCategory);
+                } else if (currentCategory === 'pinned') {
+                  vscode.postMessage({
+                    command: 'search',
+                    text: '',
+                    category: 'pinned'
+                  });
+                } else {
+                  displayNoResults('Type to search');
+                }
+                
+                return;
+              }
+            }
+            
+            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && document.activeElement === searchInput) {
+              e.preventDefault();
+              
+              const tabs = document.querySelectorAll('.tab');
+              const activeTabIndex = Array.from(tabs).findIndex(tab => tab.classList.contains('active'));
+              
+              if (activeTabIndex !== -1) {
+                tabs[activeTabIndex].classList.remove('active');
+                
+                let nextTabIndex = e.key === 'ArrowLeft' ? activeTabIndex - 1 : activeTabIndex + 1;
+                
+                if (nextTabIndex < 0) {
+                  nextTabIndex = tabs.length - 1;
+                } else if (nextTabIndex >= tabs.length) {
+                  nextTabIndex = 0;
+                }
+                
+                tabs[nextTabIndex].classList.add('active');
+                currentCategory = tabs[nextTabIndex].dataset.category;
+                
+                vscode.setState({ 
+                  searchText: lastSearchText, 
+                  category: currentCategory,
+                  pinnedResults: pinnedResults
+                });
+                
+                const searchText = searchInput.value.trim();
+                if (searchText || currentCategory === 'pinned') {
+                  performSearch(searchText, currentCategory);
+                } else if (currentCategory === 'pinned') {
+                  vscode.postMessage({
+                    command: 'search',
+                    text: '',
+                    category: 'pinned'
+                  });
+                } else {
+                  displayNoResults('Type to search');
+                }
+                
+                return;
+              }
+            }
             
             if (activeElement && activeElement.classList && activeElement.classList.contains('tab')) {
               return;
@@ -2016,17 +2145,6 @@ class SearchPanel {
                   searchQuery: searchQuery
                 }
               });
-            } else if (e.key === 'p' && (e.ctrlKey || e.metaKey) && selectedResultIndex >= 0) {
-              e.preventDefault();
-              
-              const resultItem = resultElements[selectedResultIndex];
-              const isPinnedItem = resultItem.classList.contains('pinned-item');
-              
-              if (isPinnedItem) {
-                unpinResult(searchResults[selectedResultIndex], selectedResultIndex);
-              } else {
-                pinResult(searchResults[selectedResultIndex], selectedResultIndex);
-              }
             }
           });
         })();
