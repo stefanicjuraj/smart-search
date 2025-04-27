@@ -165,6 +165,13 @@ class SearchPanel {
         command: "pinnedResults",
         results: this._pinnedResults,
       });
+
+      if (this._pinnedResults.length === 0) {
+        this._panel.webview.postMessage({
+          command: "searchResults",
+          results: [],
+        });
+      }
     }
   }
 
@@ -186,11 +193,22 @@ class SearchPanel {
 
     try {
       let results: any[] = [];
+      let categoryCounts: Record<string, number> = {
+        all: 0,
+        files: 0,
+        text: 0,
+        symbols: 0,
+        docs: 0,
+        config: 0,
+        comments: 0,
+        pinned: 0,
+      };
 
       if (category === "pinned") {
         results = this._pinnedResults.filter((item) =>
           item.name.toLowerCase().includes(query.toLowerCase())
         );
+        categoryCounts.pinned = results.length;
       } else {
         const fileResults = await searchFiles(query);
         const textResults = await searchText(query);
@@ -198,6 +216,20 @@ class SearchPanel {
         const docResults = await searchDocumentation(query);
         const configResults = await searchConfigurations(query);
         const commentResults = await searchComments(query);
+
+        categoryCounts.files = fileResults.length;
+        categoryCounts.text = textResults.length;
+        categoryCounts.symbols = symbolResults.length;
+        categoryCounts.docs = docResults.length;
+        categoryCounts.config = configResults.length;
+        categoryCounts.comments = commentResults.length;
+        categoryCounts.all =
+          fileResults.length +
+          textResults.length +
+          symbolResults.length +
+          docResults.length +
+          configResults.length +
+          commentResults.length;
 
         switch (category) {
           case "all":
@@ -268,7 +300,15 @@ class SearchPanel {
         return true;
       });
 
-      this._panel.webview.postMessage({ command: "searchResults", results });
+      if (category !== "pinned") {
+        categoryCounts[category] = results.length;
+      }
+
+      this._panel.webview.postMessage({
+        command: "searchResults",
+        results,
+        categoryCounts,
+      });
     } catch (error) {
       console.error("Search error:", error);
       vscode.window.showErrorMessage(`Search error: ${error}`);
@@ -436,8 +476,8 @@ class SearchPanel {
           background-color: var(--vscode-editor-background);
         }
         .container {
-          width: 90%;
-          max-width: 700px;
+          width: 100%;
+          max-width: 750px;
           margin: 10px auto;
           padding: 10px;
         }
@@ -481,6 +521,22 @@ class SearchPanel {
           height: 6px;
           border-radius: 50%;
           background-color: var(--vscode-badge-background);
+        }
+        .tab-count {
+          font-size: 11px;
+          color: var(--vscode-badge-foreground);
+          background-color: var(--vscode-badge-background);
+          border-radius: 10px;
+          padding: 1px 5px;
+          margin-left: 3px;
+          min-width: 14px;
+          height: 14px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .tab-count:empty {
+          display: none;
         }
         .tab-shortcuts {
           font-size: 13px;
@@ -667,34 +723,42 @@ class SearchPanel {
           <button class="tab active" data-category="all">
             <img src="${allIconSrc}" alt="All" class="tab-icon">
             All
+            <span class="tab-count"></span>
           </button>
           <button class="tab" data-category="files">
             <img src="${fileIconSrc}" alt="Files" class="tab-icon">
             Files
+            <span class="tab-count"></span>
           </button>
           <button class="tab" data-category="text">
             <img src="${textIconSrc}" alt="Text" class="tab-icon">
             Text
+            <span class="tab-count"></span>
           </button>
           <button class="tab" data-category="symbols">
             <img src="${symbolIconSrc}" alt="Symbols" class="tab-icon">
             Symbols
+            <span class="tab-count"></span>
           </button>
           <button class="tab" data-category="docs">
             <img src="${docIconSrc}" alt="Docs" class="tab-icon">
             Docs
+            <span class="tab-count"></span>
           </button>
           <button class="tab" data-category="config">
             <img src="${configIconSrc}" alt="Config" class="tab-icon">
             Config
+            <span class="tab-count"></span>
           </button>
           <button class="tab" data-category="comments">
             <img src="${commentIconSrc}" alt="Comments" class="tab-icon">
             Comments
+            <span class="tab-count"></span>
           </button>
           <button class="tab" data-category="pinned">
             <img src="${pinnedIconSrc}" alt="Pinned" class="tab-icon">
             Pinned
+            <span class="tab-count"></span>
           </button>
         </div>
         <div class="results-counter" id="resultsCounter"></div>
@@ -747,6 +811,11 @@ class SearchPanel {
               searchInput.focus();
               vscode.postMessage({ command: 'webviewReady' });
             }, 200);
+            
+            const pinnedTabCount = document.querySelector('.tab[data-category="pinned"] .tab-count');
+            if (pinnedTabCount && pinnedResults.length > 0) {
+              pinnedTabCount.textContent = pinnedResults.length.toString();
+            }
             
             document.querySelector('.container').addEventListener('click', (e) => {
               if (!e.target.closest('.result-item') && 
@@ -859,6 +928,12 @@ class SearchPanel {
             const resultsContainer = document.getElementById('searchResults');
             resultsContainer.innerHTML = \`<div class="no-results">\${message}</div>\`;
             document.getElementById('resultsCounter').textContent = '';
+            
+            if (message === 'Type to search') {
+              document.querySelectorAll('.tab:not([data-category="pinned"]) .tab-count').forEach(countElement => {
+                countElement.textContent = '';
+              });
+            }
           }
           
           function pinResult(item, index) {
@@ -887,6 +962,11 @@ class SearchPanel {
                 category: currentCategory,
                 pinnedResults: pinnedResults
               });
+              
+              const pinnedCountElement = document.querySelector('.tab[data-category="pinned"] .tab-count');
+              if (pinnedCountElement) {
+                pinnedCountElement.textContent = pinnedResults.length.toString();
+              }
             }
           }
           
@@ -916,6 +996,11 @@ class SearchPanel {
                 category: currentCategory,
                 pinnedResults: pinnedResults
               });
+              
+              const pinnedCountElement = document.querySelector('.tab[data-category="pinned"] .tab-count');
+              if (pinnedCountElement) {
+                pinnedCountElement.textContent = pinnedResults.length > 0 ? pinnedResults.length.toString() : '';
+              }
               
               if (currentCategory === 'pinned') {
                 const searchInput = document.getElementById('searchInput');
@@ -1310,6 +1395,10 @@ class SearchPanel {
             switch (message.command) {
               case 'searchResults':
                 displayResults(message.results);
+                
+                if (message.categoryCounts) {
+                  updateCategoryCounts(message.categoryCounts);
+                }
                 break;
               case 'pinnedResults':
                 pinnedResults = message.results;
@@ -1344,6 +1433,12 @@ class SearchPanel {
                 
                 if (currentCategory === 'pinned') {
                   displayResults(pinnedResults);
+                  
+                  const pinnedCount = pinnedResults.length;
+                  const pinnedCountElement = document.querySelector('.tab[data-category="pinned"] .tab-count');
+                  if (pinnedCountElement) {
+                    pinnedCountElement.textContent = pinnedCount > 0 ? pinnedCount.toString() : '';
+                  }
                 }
                 break;
               case 'focusSearchInput':
@@ -1354,6 +1449,17 @@ class SearchPanel {
                 break;
             }
           });
+
+          function updateCategoryCounts(categoryCounts) {
+            for (const category in categoryCounts) {
+              const count = categoryCounts[category];
+              const countElement = document.querySelector(\`.tab[data-category="\${category}"] .tab-count\`);
+              
+              if (countElement) {
+                countElement.textContent = count > 0 ? count.toString() : '';
+              }
+            }
+          }
 
           document.addEventListener('keydown', (e) => {
             const searchInput = document.getElementById('searchInput');
