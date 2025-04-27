@@ -23,6 +23,17 @@ An extension for advanced search functionality. The extension supports the follo
 4. Browse through search results
 5. Click on a result to open the corresponding file
 
+### Keyboard Shortcuts
+
+- Activate the search
+  - Windows/Linux: `Ctrl+Alt+F` or `Ctrl+K` / macOS: `Cmd+Option+F` or `Cmd+K`
+- Navigate categories
+  - Arrow keys (up/down): `↑/↓` or `Shift`
+- Navigate results
+  - Arrow keys (left/right): `←/→`
+- Open the search result
+  - `Enter`
+
 ## Installation
 
 - [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jurajstefanic.smart-search)
