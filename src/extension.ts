@@ -272,9 +272,40 @@ class SearchPanel {
   private async searchFiles(query: string): Promise<any[]> {
     try {
       const files = await vscode.workspace.findFiles(
-        `**/*${query}*.*`,
+        `**/*${query}*.{js,ts,jsx,tsx,html,css,md,json,py,java,c,cpp,h,hpp,ipynb}`,
         "**/node_modules/**"
       );
+
+      if (query && query.length >= 2) {
+        try {
+          const notebookFiles = await vscode.workspace.findFiles(
+            "**/*.ipynb",
+            "**/node_modules/**"
+          );
+
+          for (const file of notebookFiles) {
+            if (files.some((f) => f.fsPath === file.fsPath)) {
+              continue;
+            }
+
+            try {
+              const document = await vscode.workspace.openTextDocument(file);
+              const content = document.getText();
+
+              if (content.toLowerCase().includes(query.toLowerCase())) {
+                files.push(file);
+              }
+            } catch (err) {
+              console.error(
+                `Error checking notebook content: ${file.path}`,
+                err
+              );
+            }
+          }
+        } catch (err) {
+          console.error("Error finding notebook files:", err);
+        }
+      }
 
       return files
         .slice(0, 50)
@@ -304,7 +335,7 @@ class SearchPanel {
 
       const filePattern = new vscode.RelativePattern(
         vscode.workspace.workspaceFolders?.[0] || "",
-        "**/*.{js,ts,jsx,tsx,html,css,md,json,py,java,c,cpp,h,hpp}"
+        "**/*.{js,ts,jsx,tsx,html,css,md,json,py,java,c,cpp,h,hpp,ipynb}"
       );
 
       const files = await vscode.workspace.findFiles(
@@ -317,12 +348,146 @@ class SearchPanel {
         try {
           const document = await vscode.workspace.openTextDocument(file);
           const text = document.getText();
-          const lines = text.split(/\r?\n/);
+
+          const fileExt = file.path.split(".").pop()?.toLowerCase();
+          let lines: string[] = [];
+          let lineMap: { originalLine: number; content: string }[] = [];
+
+          if (fileExt === "ipynb") {
+            try {
+              const notebookContent = JSON.parse(text);
+
+              if (
+                notebookContent.cells &&
+                Array.isArray(notebookContent.cells)
+              ) {
+                console.log(
+                  `Found ${notebookContent.cells.length} cells in notebook`
+                );
+
+                notebookContent.cells.forEach(
+                  (cell: any, cellIndex: number) => {
+                    if (cell && cell.source) {
+                      console.log(
+                        `Cell ${cellIndex} type: ${
+                          cell.cell_type
+                        }, source type: ${typeof cell.source}`
+                      );
+
+                      let sourceLines: string[] = [];
+
+                      if (Array.isArray(cell.source)) {
+                        sourceLines = cell.source;
+                        console.log(
+                          `Cell ${cellIndex} has array source with ${sourceLines.length} lines`
+                        );
+                      } else if (typeof cell.source === "string") {
+                        sourceLines = cell.source.split("\n");
+                        console.log(
+                          `Cell ${cellIndex} has string source with ${sourceLines.length} lines`
+                        );
+                      }
+
+                      sourceLines.forEach((line: string) => {
+                        const cleanLine = line
+                          .replace(/\\n/g, "")
+                          .replace(/\\"/g, '"');
+
+                        if (cleanLine) {
+                          lines.push(cleanLine);
+                          lineMap.push({
+                            originalLine: lines.length - 1,
+                            content: cleanLine,
+                          });
+
+                          if (
+                            query &&
+                            cleanLine
+                              .toLowerCase()
+                              .includes(query.toLowerCase())
+                          ) {
+                            console.log(
+                              `Found match for "${query}" in line: ${cleanLine}`
+                            );
+                          }
+                        }
+                      });
+                    }
+                  }
+                );
+
+                if (lines.length > 0) {
+                  console.log(
+                    `Extracted ${lines.length} searchable lines from notebook`
+                  );
+                } else {
+                  console.warn("No content was extracted from the notebook");
+                }
+              } else {
+                console.warn(
+                  "Notebook has no cells array or it is not an array"
+                );
+              }
+            } catch (e) {
+              console.error("Error parsing ipynb:", e);
+              lines = text.split(/\r?\n/);
+              lines.forEach((line, i) => {
+                if (line.trim()) {
+                  lineMap.push({
+                    originalLine: i,
+                    content: line,
+                  });
+                }
+              });
+            }
+          } else {
+            lines = text.split(/\r?\n/);
+            lines.forEach((line, i) => {
+              lineMap.push({
+                originalLine: i,
+                content: line,
+              });
+            });
+          }
+
           const fileName = file.path.split("/").pop() || "";
 
+          if (fileExt === "ipynb" && query) {
+            if (text.toLowerCase().includes(query.toLowerCase())) {
+              console.log(`Found direct match in notebook for "${query}"`);
+
+              const lowerText = text.toLowerCase();
+              const lowerQuery = query.toLowerCase();
+              const index = lowerText.indexOf(lowerQuery);
+
+              if (index !== -1) {
+                const start = Math.max(0, index - 20);
+                const end = Math.min(text.length, index + query.length + 20);
+                let context = text.substring(start, end);
+
+                context = context
+                  .replace(/[{},\[\]"\\]/g, " ")
+                  .replace(/\s+/g, " ")
+                  .trim();
+
+                textResults.push({
+                  type: "text",
+                  name: context,
+                  path: vscode.workspace.asRelativePath(file),
+                  uri: file.toString(),
+                  lineNumber: 0,
+                  fileName: fileName,
+                });
+              }
+            }
+          }
+
           for (let i = 0; i < lines.length; i++) {
-            if (lines[i].toLowerCase().includes(query.toLowerCase())) {
-              const lineText = lines[i].trim();
+            const currentLine = lineMap[i]?.content || lines[i];
+            const originalLineNumber = lineMap[i]?.originalLine || i;
+
+            if (currentLine.toLowerCase().includes(query.toLowerCase())) {
+              const lineText = currentLine.trim();
               if (lineText && lineText.length > 0) {
                 const meaningfulContent = lineText
                   .replace(new RegExp(query, "gi"), "")
@@ -338,9 +503,20 @@ class SearchPanel {
                     name: lineText,
                     path: vscode.workspace.asRelativePath(file),
                     uri: file.toString(),
-                    lineNumber: i,
+                    lineNumber: originalLineNumber,
                     fileName: fileName,
                   });
+                } else {
+                  if (fileExt === "ipynb") {
+                    textResults.push({
+                      type: "text",
+                      name: lineText,
+                      path: vscode.workspace.asRelativePath(file),
+                      uri: file.toString(),
+                      lineNumber: originalLineNumber,
+                      fileName: fileName,
+                    });
+                  }
                 }
               }
 
@@ -350,6 +526,7 @@ class SearchPanel {
             }
           }
         } catch (err) {
+          console.error(`Error processing file ${file.path}:`, err);
           continue;
         }
       }
@@ -587,6 +764,93 @@ class SearchPanel {
   ): { text: string; lineNumber: number }[] {
     const comments: { text: string; lineNumber: number }[] = [];
 
+    if (fileExt === "ipynb") {
+      try {
+        const notebookContent = JSON.parse(text);
+        if (notebookContent.cells) {
+          let lineCounter = 0;
+
+          notebookContent.cells.forEach((cell: any) => {
+            if (cell.cell_type === "markdown" && cell.source) {
+              const source = Array.isArray(cell.source)
+                ? cell.source.join("")
+                : cell.source;
+
+              if (source.trim().length > 0) {
+                comments.push({
+                  text: source,
+                  lineNumber: lineCounter,
+                });
+              }
+              lineCounter += source.split(/\r?\n/).length;
+            }
+
+            else if (cell.cell_type === "code" && cell.source) {
+              const source = Array.isArray(cell.source)
+                ? cell.source.join("")
+                : cell.source;
+
+              const lines = source.split(/\r?\n/);
+
+              let inMultilineComment = false;
+              let quoteType = "";
+              let commentStart = 0;
+              let commentText = "";
+
+              for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+
+                if (!inMultilineComment) {
+                  if (
+                    line.trim().startsWith('"""') ||
+                    line.trim().startsWith("'''")
+                  ) {
+                    inMultilineComment = true;
+                    quoteType = line.trim().startsWith('"""') ? '"""' : "'''";
+                    commentStart = lineCounter + i;
+                    commentText = line.trim().substring(3);
+
+                    if (
+                      line.trim().endsWith(quoteType) &&
+                      line.trim().length > 6
+                    ) {
+                      inMultilineComment = false;
+                      commentText = commentText
+                        .substring(0, commentText.length - 3)
+                        .trim();
+                      comments.push({
+                        text: commentText,
+                        lineNumber: commentStart,
+                      });
+                      commentText = "";
+                    }
+                  }
+                } else {
+                  if (line.trim().endsWith(quoteType)) {
+                    inMultilineComment = false;
+                    commentText +=
+                      "\n" +
+                      line.substring(0, line.lastIndexOf(quoteType)).trim();
+                    comments.push({
+                      text: commentText,
+                      lineNumber: commentStart,
+                    });
+                    commentText = "";
+                  } else {
+                    commentText += "\n" + line.trim();
+                  }
+                }
+              }
+
+              lineCounter += lines.length;
+            }
+          });
+        }
+      } catch (e) {
+        console.error("Error parsing Jupyter notebook:", e);
+      }
+    }
+
     if (
       [
         "js",
@@ -677,7 +941,7 @@ class SearchPanel {
 
       const codePattern = new vscode.RelativePattern(
         vscode.workspace.workspaceFolders?.[0] || "",
-        "**/*.{js,ts,jsx,tsx,java,c,cpp,cs,go,php,py,rb,rs,swift,kt,scala,h,hpp,m,mm,jade,pug,vue,svelte,html,css,scss,less,dart,lua,md,mdx,markdown}"
+        "**/*.{js,ts,jsx,tsx,java,c,cpp,cs,go,php,py,rb,rs,swift,kt,scala,h,hpp,m,mm,jade,pug,vue,svelte,html,css,scss,less,dart,lua,md,mdx,markdown,ipynb}"
       );
 
       const files = await vscode.workspace.findFiles(
@@ -703,9 +967,73 @@ class SearchPanel {
         try {
           const document = await vscode.workspace.openTextDocument(file);
           const text = document.getText();
-          const lines = text.split(/\r?\n/);
           const fileExt = file.path.split(".").pop()?.toLowerCase() || "";
           const isMarkdown = ["md", "mdx", "markdown"].includes(fileExt);
+
+          let lines: string[] = [];
+          let lineMap: { originalLine: number; content: string }[] = [];
+
+          if (fileExt === "ipynb") {
+            try {
+              const notebookContent = JSON.parse(text);
+
+              if (notebookContent.cells) {
+                let lineCounter = 0;
+
+                notebookContent.cells.forEach(
+                  (cell: any, cellIndex: number) => {
+                    if (cell.source) {
+                      const sourceArray = Array.isArray(cell.source)
+                        ? cell.source
+                        : cell.source.split(/\r?\n/);
+
+                      sourceArray.forEach((line: string, i: number) => {
+                        const cleanLine = line.replace(/\\n$/, "");
+
+                        if (cell.cell_type === "code") {
+                          if (cleanLine.trim().startsWith("#")) {
+                            lines.push(cleanLine);
+                            lineMap.push({
+                              originalLine: lineCounter + i,
+                              content: cleanLine,
+                            });
+                          }
+                        }
+                        else if (cell.cell_type === "markdown") {
+                          if (cleanLine.length > 0) {
+                            lines.push(cleanLine);
+                            lineMap.push({
+                              originalLine: lineCounter + i,
+                              content: cleanLine,
+                            });
+                          }
+                        }
+                      });
+
+                      lineCounter += sourceArray.length;
+                    }
+                  }
+                );
+              }
+            } catch (e) {
+              console.error("Error parsing ipynb for comments:", e);
+              lines = text.split(/\r?\n/);
+              lines.forEach((line, i) => {
+                lineMap.push({
+                  originalLine: i,
+                  content: line,
+                });
+              });
+            }
+          } else {
+            lines = text.split(/\r?\n/);
+            lines.forEach((line, i) => {
+              lineMap.push({
+                originalLine: i,
+                content: line,
+              });
+            });
+          }
 
           const multilineComments = this.extractMultilineComments(
             text,
@@ -754,11 +1082,16 @@ class SearchPanel {
           );
 
           for (let i = 0; i < lines.length; i++) {
-            if (multilineLineNumbers.has(i)) {
+            const currentLine =
+              fileExt === "ipynb" ? lineMap[i].content : lines[i];
+            const originalLineNumber =
+              fileExt === "ipynb" ? lineMap[i].originalLine : i;
+
+            if (multilineLineNumbers.has(originalLineNumber)) {
               continue;
             }
 
-            const line = lines[i].trim();
+            const line = currentLine.trim();
             if (!line) continue;
 
             let isComment = false;
@@ -789,7 +1122,7 @@ class SearchPanel {
                   .trim();
 
                 if (commentText.toLowerCase().includes(query.toLowerCase())) {
-                  const uniqueKey = `${file.toString()}:${i}:${commentText}`;
+                  const uniqueKey = `${file.toString()}:${originalLineNumber}:${commentText}`;
                   if (!processedLines.has(uniqueKey)) {
                     processedLines.add(uniqueKey);
                     commentResults.push({
@@ -797,7 +1130,7 @@ class SearchPanel {
                       name: commentText,
                       path: vscode.workspace.asRelativePath(file),
                       uri: file.toString(),
-                      lineNumber: i,
+                      lineNumber: originalLineNumber,
                     });
 
                     if (commentResults.length >= 50) {
@@ -822,7 +1155,7 @@ class SearchPanel {
               let commentText = line.substring(commentStart).trim();
 
               if (commentText.toLowerCase().includes(query.toLowerCase())) {
-                const uniqueKey = `${file.toString()}:${i}:${commentText}`;
+                const uniqueKey = `${file.toString()}:${originalLineNumber}:${commentText}`;
                 if (!processedLines.has(uniqueKey)) {
                   processedLines.add(uniqueKey);
                   commentResults.push({
@@ -830,7 +1163,7 @@ class SearchPanel {
                     name: commentText,
                     path: vscode.workspace.asRelativePath(file),
                     uri: file.toString(),
-                    lineNumber: i,
+                    lineNumber: originalLineNumber,
                   });
 
                   if (commentResults.length >= 50) {
@@ -866,6 +1199,7 @@ class SearchPanel {
           /^\s*\*[^/].*$/,
         ];
       case "py":
+      case "ipynb":
         return [/^\s*#.*/, /^\s*""".*/, /^\s*'''.*/, /^\s*"""/];
       case "rb":
         return [/^\s*#.*/, /^\s*=begin.*/, /^\s*=end/];
