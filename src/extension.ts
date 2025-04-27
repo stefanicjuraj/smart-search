@@ -1130,7 +1130,6 @@ class SearchPanel {
         }
         .tab.active {
           border-bottom: 2px solid var(--vscode-focusBorder);
-          font-weight: bold;
         }
         .tab.active::after {
           content: '';
