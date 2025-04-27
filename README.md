@@ -28,9 +28,9 @@ An extension for advanced search functionality. The extension supports the follo
 - Activate the search
   - Windows/Linux: `Ctrl+Alt+F` or `Ctrl+K` / macOS: `Cmd+Option+F` or `Cmd+K`
 - Navigate categories
-  - Arrow keys (up/down): `↑/↓` or `Shift`
+  - Arrow keys (up/down): `↑/↓`
 - Navigate results
-  - Arrow keys (left/right): `←/→`
+  - Arrow keys (left/right): `←/→` or `Shift`
 - Open the search result
   - `Enter`
 
