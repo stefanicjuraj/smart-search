@@ -27,7 +27,7 @@ class SearchPanel {
   ) {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
-      : undefined;
+      : vscode.ViewColumn.One;
 
     if (SearchPanel.currentPanel) {
       SearchPanel.currentPanel._panel.reveal(column);
