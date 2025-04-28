@@ -26,6 +26,17 @@ class SearchPanel {
   private readonly _extensionContext: vscode.ExtensionContext;
   private _disposables: vscode.Disposable[] = [];
   private _pinnedResults: any[] = [];
+  private _tabOrder: string[] = [
+    "all",
+    "files",
+    "text",
+    "symbols",
+    "docs",
+    "config",
+    "comments",
+    "pinned",
+  ];
+  private _disabledTabs: string[] = [];
 
   public static createOrShow(
     extensionUri: vscode.Uri,
@@ -67,6 +78,25 @@ class SearchPanel {
       []
     );
 
+    this._tabOrder = this._extensionContext.globalState.get(
+      "smartSearch.tabOrder",
+      [
+        "all",
+        "files",
+        "text",
+        "symbols",
+        "docs",
+        "config",
+        "comments",
+        "pinned",
+      ]
+    );
+
+    this._disabledTabs = this._extensionContext.globalState.get(
+      "smartSearch.disabledTabs",
+      []
+    );
+
     this._update();
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -87,6 +117,12 @@ class SearchPanel {
           this._panel.webview.postMessage({
             command: "pinnedResults",
             results: this._pinnedResults,
+          });
+
+          this._panel.webview.postMessage({
+            command: "tabSettings",
+            tabOrder: this._tabOrder,
+            disabledTabs: this._disabledTabs,
           });
         }
       },
@@ -109,11 +145,50 @@ class SearchPanel {
           case "unpinResult":
             this.unpinResult(message.itemId);
             return;
+          case "updateTabOrder":
+            this.updateTabOrder(message.tabOrder);
+            return;
+          case "toggleTabVisibility":
+            this.toggleTabVisibility(message.tabCategory);
+            return;
         }
       },
       null,
       this._disposables
     );
+  }
+
+  private updateTabOrder(newTabOrder: string[]) {
+    if (!newTabOrder || !Array.isArray(newTabOrder) || newTabOrder.length === 0)
+      return;
+
+    this._tabOrder = newTabOrder;
+    this._extensionContext.globalState.update(
+      "smartSearch.tabOrder",
+      this._tabOrder
+    );
+  }
+
+  private toggleTabVisibility(tabCategory: string) {
+    if (!tabCategory) return;
+
+    const index = this._disabledTabs.indexOf(tabCategory);
+    if (index !== -1) {
+      this._disabledTabs.splice(index, 1);
+    } else {
+      this._disabledTabs.push(tabCategory);
+    }
+
+    this._extensionContext.globalState.update(
+      "smartSearch.disabledTabs",
+      this._disabledTabs
+    );
+
+    this._panel.webview.postMessage({
+      command: "tabSettings",
+      tabOrder: this._tabOrder,
+      disabledTabs: this._disabledTabs,
+    });
   }
 
   private pinResult(item: any) {
@@ -439,6 +514,12 @@ class SearchPanel {
       "icons",
       "pinned.svg"
     );
+    const settingsIconPath = vscode.Uri.joinPath(
+      this._extensionUri,
+      "assets",
+      "icons",
+      "settings.svg"
+    );
 
     const fileIconSrc = this._panel.webview
       .asWebviewUri(fileIconPath)
@@ -459,6 +540,9 @@ class SearchPanel {
     const allIconSrc = this._panel.webview.asWebviewUri(allIconPath).toString();
     const pinnedIconSrc = this._panel.webview
       .asWebviewUri(pinnedIconPath)
+      .toString();
+    const settingsIconSrc = this._panel.webview
+      .asWebviewUri(settingsIconPath)
       .toString();
 
     return `<!DOCTYPE html>
@@ -522,6 +606,10 @@ class SearchPanel {
           border-radius: 50%;
           background-color: var(--vscode-badge-background);
         }
+        .tab.disabled {
+          opacity: 0.5;
+          text-decoration: line-through;
+        }
         .tab-count {
           font-size: 11px;
           color: var(--vscode-badge-foreground);
@@ -546,6 +634,100 @@ class SearchPanel {
         .tab-icon {
           width: 16px;
           height: 16px;
+        }
+        .tabs-container {
+          position: relative;
+        }
+        .tab-settings-toggle {
+          position: absolute;
+          right: 5px;
+          top: -20px;
+          background: var(--vscode-button-secondaryBackground);
+          border: none;
+          color: var(--vscode-button-secondaryForeground);
+          cursor: pointer;
+          font-size: 12px;
+          padding: 3px 8px;
+          border-radius: 3px;
+          z-index: 10;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1;
+        }
+        .tab-settings-toggle:hover {
+          background-color: var(--vscode-button-background);
+          color: var(--vscode-button-foreground);
+        }
+        .tab-settings-toggle img {
+          filter: brightness(1.5);
+        }
+        .tab-settings-panel {
+          display: none;
+          position: absolute;
+          top: 20px;
+          right: 0;
+          background: var(--vscode-editor-background);
+          border: 1px solid var(--vscode-panel-border);
+          border-radius: 4px;
+          padding: 10px;
+          z-index: 100;
+          width: 300px;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        .tab-settings-panel.visible {
+          display: block;
+        }
+        .tab-settings-title {
+          margin: 0 0 10px 0;
+          font-size: 14px;
+          font-weight: 600;
+        }
+        .tab-reorder-list {
+          list-style-type: none;
+          padding: 0;
+          margin: 0;
+        }
+        .tab-reorder-item {
+          display: flex;
+          align-items: center;
+          padding: 4px 8px;
+          background: var(--vscode-input-background);
+          margin-bottom: 4px;
+          border-radius: 3px;
+          cursor: move;
+          user-select: none;
+          font-size: 13px;
+        }
+        .tab-reorder-item.dragging {
+          opacity: 0.5;
+        }
+        .tab-reorder-handle {
+          margin-right: 8px;
+          cursor: grab;
+          opacity: 0.7;
+        }
+        .tab-reorder-handle:hover {
+          opacity: 1;
+        }
+        .tab-toggle-checkbox {
+          margin-left: auto;
+        }
+        .tab-toggle-label {
+          display: flex;
+          align-items: center;
+          margin-left: 8px;
+          cursor: pointer;
+        }
+        .drag-item-ghost {
+          opacity: 0.4;
+          background: var(--vscode-editor-background);
+        }
+        .tab-draggable {
+          cursor: grab;
+        }
+        .tab-draggable:active {
+          cursor: grabbing;
         }
         .results {
           max-height: 500px;
@@ -719,47 +901,20 @@ class SearchPanel {
       <div class="container">
         <input type="text" class="search-box" id="searchInput" placeholder="Search..." autofocus>
         <div class="tab-shortcuts">←/→: Navigate categories | ↑/↓: Navigate results</div>
-        <div class="tabs">
-          <button class="tab active" data-category="all">
-            <img src="${allIconSrc}" alt="All" class="tab-icon">
-            All
-            <span class="tab-count"></span>
+        <div class="tabs-container">
+          <button class="tab-settings-toggle" id="tabSettingsToggle">
+            <img src="${settingsIconSrc}" alt="Settings" class="tab-icon" style="width: 18px; height: 18px;">
           </button>
-          <button class="tab" data-category="files">
-            <img src="${fileIconSrc}" alt="Files" class="tab-icon">
-            Files
-            <span class="tab-count"></span>
-          </button>
-          <button class="tab" data-category="text">
-            <img src="${textIconSrc}" alt="Text" class="tab-icon">
-            Text
-            <span class="tab-count"></span>
-          </button>
-          <button class="tab" data-category="symbols">
-            <img src="${symbolIconSrc}" alt="Symbols" class="tab-icon">
-            Symbols
-            <span class="tab-count"></span>
-          </button>
-          <button class="tab" data-category="docs">
-            <img src="${docIconSrc}" alt="Docs" class="tab-icon">
-            Docs
-            <span class="tab-count"></span>
-          </button>
-          <button class="tab" data-category="config">
-            <img src="${configIconSrc}" alt="Config" class="tab-icon">
-            Config
-            <span class="tab-count"></span>
-          </button>
-          <button class="tab" data-category="comments">
-            <img src="${commentIconSrc}" alt="Comments" class="tab-icon">
-            Comments
-            <span class="tab-count"></span>
-          </button>
-          <button class="tab" data-category="pinned">
-            <img src="${pinnedIconSrc}" alt="Pinned" class="tab-icon">
-            Pinned
-            <span class="tab-count"></span>
-          </button>
+          <div class="tab-settings-panel" id="tabSettingsPanel">
+            <h3 class="tab-settings-title">Tab Settings</h3>
+            <p>Drag to reorder tabs or toggle visibility</p>
+            <ul class="tab-reorder-list" id="tabReorderList">
+              <!-- Tab settings will be populated dynamically -->
+            </ul>
+          </div>
+          <div class="tabs" id="tabsContainer">
+            <!-- Tabs will be populated dynamically -->
+          </div>
         </div>
         <div class="results-counter" id="resultsCounter"></div>
         <div class="results" id="searchResults">
@@ -776,16 +931,33 @@ class SearchPanel {
           let searchResults = [];
           let pinnedResults = [];
           let selectedResultIndex = -1;
+          let tabOrder = ['all', 'files', 'text', 'symbols', 'docs', 'config', 'comments', 'pinned'];
+          let disabledTabs = [];
           
           const iconSources = {
             'all': '${allIconSrc}',
             'file': '${fileIconSrc}',
+            'files': '${fileIconSrc}',
             'text': '${textIconSrc}',
             'doc': '${docIconSrc}',
+            'docs': '${docIconSrc}',
             'config': '${configIconSrc}',
             'comment': '${commentIconSrc}',
+            'comments': '${commentIconSrc}',
             'symbol': '${symbolIconSrc}',
+            'symbols': '${symbolIconSrc}',
             'pinned': '${pinnedIconSrc}'
+          };
+          
+          const tabLabels = {
+            'all': 'All',
+            'files': 'Files',
+            'text': 'Text',
+            'symbols': 'Symbols',
+            'docs': 'Docs',
+            'config': 'Config',
+            'comments': 'Comments',
+            'pinned': 'Pinned'
           };
           
           const previousState = vscode.getState() || { searchText: '', category: 'all', pinnedResults: [] };
@@ -812,16 +984,16 @@ class SearchPanel {
               vscode.postMessage({ command: 'webviewReady' });
             }, 200);
             
-            const pinnedTabCount = document.querySelector('.tab[data-category="pinned"] .tab-count');
-            if (pinnedTabCount && pinnedResults.length > 0) {
-              pinnedTabCount.textContent = pinnedResults.length.toString();
-            }
+            setupTabSettings();
+            renderTabs();
             
             document.querySelector('.container').addEventListener('click', (e) => {
               if (!e.target.closest('.result-item') && 
                   !e.target.closest('.tab') && 
                   !e.target.closest('.pin-button') &&
-                  !e.target.closest('.category-badge')) {
+                  !e.target.closest('.category-badge') &&
+                  !e.target.closest('.tab-settings-panel') &&
+                  !e.target.closest('.tab-settings-toggle')) {
                 searchInput.focus();
               }
             });
@@ -837,14 +1009,6 @@ class SearchPanel {
                 category: 'pinned'
               });
             }
-            
-            document.querySelectorAll('.tab').forEach(tab => {
-              if (tab.dataset.category === currentCategory) {
-                tab.classList.add('active');
-              } else {
-                tab.classList.remove('active');
-              }
-            });
             
             searchInput.addEventListener('input', () => {
               const searchText = searchInput.value.trim();
@@ -873,16 +1037,47 @@ class SearchPanel {
                 }
               }, 300);
             });
+          });
+          
+          function renderTabs() {
+            const tabsContainer = document.getElementById('tabsContainer');
+            if (!tabsContainer) return;
             
-            document.querySelectorAll('.tab').forEach(tab => {
-              tab.addEventListener('click', () => {
+            tabsContainer.innerHTML = '';
+            
+            tabOrder.forEach(category => {
+              if (disabledTabs.includes(category)) return;
+              
+              const tabButton = document.createElement('button');
+              tabButton.className = 'tab tab-draggable';
+              tabButton.dataset.category = category;
+              
+              if (category === currentCategory) {
+                tabButton.classList.add('active');
+              }
+              
+              const iconImg = document.createElement('img');
+              iconImg.src = iconSources[category] || '';
+              iconImg.alt = tabLabels[category] || category;
+              iconImg.className = 'tab-icon';
+              
+              const tabText = document.createTextNode(tabLabels[category] || category);
+              
+              const countSpan = document.createElement('span');
+              countSpan.className = 'tab-count';
+              
+              tabButton.appendChild(iconImg);
+              tabButton.appendChild(tabText);
+              tabButton.appendChild(countSpan);
+              
+              tabButton.addEventListener('click', () => {
                 document.querySelectorAll('.tab').forEach(t => {
                   t.classList.remove('active');
                 });
                 
-                tab.classList.add('active');
+                tabButton.classList.add('active');
                 
-                currentCategory = tab.dataset.category;
+                currentCategory = category;
                 
                 vscode.setState({ 
                   searchText: lastSearchText, 
@@ -890,7 +1085,7 @@ class SearchPanel {
                   pinnedResults: pinnedResults
                 });
                 
-                const searchText = searchInput.value.trim();
+                const searchText = document.getElementById('searchInput').value.trim();
                 if (searchText || currentCategory === 'pinned') {
                   performSearch(searchText, currentCategory);
                 } else if (currentCategory === 'pinned') {
@@ -903,10 +1098,186 @@ class SearchPanel {
                   displayNoResults('Type to search');
                 }
                 
-                searchInput.focus();
+                document.getElementById('searchInput').focus();
+              });
+              
+              tabsContainer.appendChild(tabButton);
+            });
+            
+            if (pinnedResults.length > 0) {
+              const pinnedCountElement = document.querySelector('.tab[data-category="pinned"] .tab-count');
+              if (pinnedCountElement) {
+                pinnedCountElement.textContent = pinnedResults.length.toString();
+              }
+            }
+            
+            const tabs = document.querySelectorAll('.tab-draggable');
+            tabs.forEach(tab => {
+              tab.setAttribute('draggable', 'true');
+              
+              tab.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', tab.dataset.category);
+                tab.classList.add('dragging');
+              });
+              
+              tab.addEventListener('dragend', () => {
+                tab.classList.remove('dragging');
+              });
+              
+              tab.addEventListener('dragover', (e) => {
+                e.preventDefault();
+              });
+              
+              tab.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const draggedCategory = e.dataTransfer.getData('text/plain');
+                const targetCategory = tab.dataset.category;
+                
+                if (draggedCategory !== targetCategory) {
+                  const newOrder = [...tabOrder];
+                  const draggedIndex = newOrder.indexOf(draggedCategory);
+                  const targetIndex = newOrder.indexOf(targetCategory);
+                  
+                  if (draggedIndex !== -1 && targetIndex !== -1) {
+                    newOrder.splice(draggedIndex, 1);
+                    newOrder.splice(targetIndex, 0, draggedCategory);
+                    
+                    tabOrder = newOrder;
+                    vscode.postMessage({
+                      command: 'updateTabOrder',
+                      tabOrder: newOrder
+                    });
+                    
+                    renderTabs();
+                    updateTabSettingsPanel();
+                  }
+                }
               });
             });
-          });
+          }
+          
+          function setupTabSettings() {
+            const tabSettingsToggle = document.getElementById('tabSettingsToggle');
+            const tabSettingsPanel = document.getElementById('tabSettingsPanel');
+            
+            tabSettingsToggle.addEventListener('click', () => {
+              tabSettingsPanel.classList.toggle('visible');
+              if (tabSettingsPanel.classList.contains('visible')) {
+                updateTabSettingsPanel();
+              }
+            });
+            
+            document.addEventListener('click', (e) => {
+              if (!e.target.closest('#tabSettingsPanel') && 
+                  !e.target.closest('#tabSettingsToggle') && 
+                  tabSettingsPanel.classList.contains('visible')) {
+                tabSettingsPanel.classList.remove('visible');
+              }
+            });
+          }
+          
+          function updateTabSettingsPanel() {
+            const tabReorderList = document.getElementById('tabReorderList');
+            if (!tabReorderList) return;
+            
+            tabReorderList.innerHTML = '';
+            
+            tabOrder.forEach((category, index) => {
+              const listItem = document.createElement('li');
+              listItem.className = 'tab-reorder-item';
+              listItem.setAttribute('draggable', 'true');
+              listItem.dataset.category = category;
+              
+              const handleSpan = document.createElement('span');
+              handleSpan.className = 'tab-reorder-handle';
+              handleSpan.innerHTML = '⠿';
+              
+              const iconImg = document.createElement('img');
+              iconImg.src = iconSources[category] || '';
+              iconImg.alt = tabLabels[category] || category;
+              iconImg.className = 'tab-icon';
+              iconImg.style.marginRight = '5px';
+              
+              const labelSpan = document.createElement('span');
+              labelSpan.textContent = tabLabels[category] || category;
+              
+              const toggleLabel = document.createElement('label');
+              toggleLabel.className = 'tab-toggle-label';
+              
+              const toggleCheckbox = document.createElement('input');
+              toggleCheckbox.type = 'checkbox';
+              toggleCheckbox.className = 'tab-toggle-checkbox';
+              toggleCheckbox.checked = !disabledTabs.includes(category);
+              
+              toggleCheckbox.addEventListener('change', () => {
+                vscode.postMessage({
+                  command: 'toggleTabVisibility',
+                  tabCategory: category
+                });
+                
+                if (toggleCheckbox.checked) {
+                  const index = disabledTabs.indexOf(category);
+                  if (index !== -1) {
+                    disabledTabs.splice(index, 1);
+                  }
+                } else {
+                  if (!disabledTabs.includes(category)) {
+                    disabledTabs.push(category);
+                  }
+                }
+                
+                renderTabs();
+              });
+              
+              listItem.appendChild(handleSpan);
+              listItem.appendChild(iconImg);
+              listItem.appendChild(labelSpan);
+              toggleLabel.appendChild(toggleCheckbox);
+              listItem.appendChild(toggleLabel);
+              
+              tabReorderList.appendChild(listItem);
+              
+              listItem.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', category);
+                listItem.classList.add('dragging');
+              });
+              
+              listItem.addEventListener('dragend', () => {
+                listItem.classList.remove('dragging');
+              });
+              
+              listItem.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+              });
+              
+              listItem.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const draggedCategory = e.dataTransfer.getData('text/plain');
+                const targetCategory = category;
+                
+                if (draggedCategory !== targetCategory) {
+                  const newOrder = [...tabOrder];
+                  const draggedIndex = newOrder.indexOf(draggedCategory);
+                  const targetIndex = newOrder.indexOf(targetCategory);
+                  
+                  if (draggedIndex !== -1 && targetIndex !== -1) {
+                    newOrder.splice(draggedIndex, 1);
+                    newOrder.splice(targetIndex, 0, draggedCategory);
+                    
+                    tabOrder = newOrder;
+                    vscode.postMessage({
+                      command: 'updateTabOrder',
+                      tabOrder: newOrder
+                    });
+                    
+                    updateTabSettingsPanel();
+                    renderTabs();
+                  }
+                }
+              });
+            });
+          }
           
           function performSearch(text, category) {
             vscode.postMessage({
@@ -1176,9 +1547,9 @@ class SearchPanel {
                 } else {
                   fullName = escapeHtml(item.name);
                   if ((item.type === 'text' || item.type === 'doc' || item.type === 'config' || item.type === 'comment') && typeof item.lineNumber === 'number') {
-                    displayName = \`<span class="line-number">\${item.lineNumber + 1}</span> \${item.name}\`;
+                    displayName = \`<span class="line-number">\${item.lineNumber + 1}</span> \${displayName}\`;
                   } else if (item.type === 'symbol' && item.kindName) {
-                    displayName = \`<span class="symbol-badge">\${item.kindName}</span> \${item.name}\`;
+                    displayName = \`<span class="symbol-badge">\${item.kindName}</span> \${displayName}\`;
                   }
                 }
                 
@@ -1441,6 +1812,17 @@ class SearchPanel {
                   }
                 }
                 break;
+              case 'tabSettings':
+                if (message.tabOrder && Array.isArray(message.tabOrder)) {
+                  tabOrder = message.tabOrder;
+                }
+                
+                if (message.disabledTabs && Array.isArray(message.disabledTabs)) {
+                  disabledTabs = message.disabledTabs;
+                }
+                
+                renderTabs();
+                break;
               case 'focusSearchInput':
                 const searchInput = document.getElementById('searchInput');
                 if (searchInput) {
@@ -1512,21 +1894,36 @@ class SearchPanel {
               e.preventDefault();
               
               const tabs = document.querySelectorAll('.tab');
+              if (tabs.length === 0) return;
+              
               const activeTabIndex = Array.from(tabs).findIndex(tab => tab.classList.contains('active'));
               
               if (activeTabIndex !== -1) {
                 tabs[activeTabIndex].classList.remove('active');
                 
-                let nextTabIndex = e.key === 'ArrowLeft' ? activeTabIndex - 1 : activeTabIndex + 1;
+                let nextIndex = activeTabIndex;
+                let foundTab = false;
+                let attempts = 0;
                 
-                if (nextTabIndex < 0) {
-                  nextTabIndex = tabs.length - 1;
-                } else if (nextTabIndex >= tabs.length) {
-                  nextTabIndex = 0;
+                while (!foundTab && attempts < tabs.length) {
+                  nextIndex = e.key === 'ArrowLeft' ? nextIndex - 1 : nextIndex + 1;
+                  
+                  if (nextIndex < 0) {
+                    nextIndex = tabs.length - 1;
+                  } else if (nextIndex >= tabs.length) {
+                    nextIndex = 0;
+                  }
+                  
+                  const tabCategory = tabs[nextIndex].dataset.category;
+                  if (!disabledTabs.includes(tabCategory)) {
+                    foundTab = true;
+                  }
+                  
+                  attempts++;
                 }
                 
-                tabs[nextTabIndex].classList.add('active');
-                currentCategory = tabs[nextTabIndex].dataset.category;
+                tabs[nextIndex].classList.add('active');
+                currentCategory = tabs[nextIndex].dataset.category;
                 
                 vscode.setState({ 
                   searchText: lastSearchText, 
@@ -1545,6 +1942,31 @@ class SearchPanel {
                   });
                 } else {
                   displayNoResults('Type to search');
+                }
+                
+                return;
+              } else if (tabs.length > 0) {
+                const visibleTabs = Array.from(tabs).filter(tab => {
+                  const category = tab.dataset.category;
+                  return !disabledTabs.includes(category);
+                });
+                
+                if (visibleTabs.length > 0) {
+                  visibleTabs[0].classList.add('active');
+                  currentCategory = visibleTabs[0].dataset.category;
+                  
+                  const searchText = searchInput.value.trim();
+                  if (searchText || currentCategory === 'pinned') {
+                    performSearch(searchText, currentCategory);
+                  } else if (currentCategory === 'pinned') {
+                    vscode.postMessage({
+                      command: 'search',
+                      text: '',
+                      category: 'pinned'
+                    });
+                  } else {
+                    displayNoResults('Type to search');
+                  }
                 }
                 
                 return;
