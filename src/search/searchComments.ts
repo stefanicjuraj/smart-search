@@ -33,6 +33,111 @@ export async function searchComments(query: string): Promise<any[]> {
       })
       .slice(0, 25);
 
+    const commentPatterns = {
+      singleLine: {
+        "//": /\/\/(.+)$/,
+        "#": /#(.+)$/,
+        "--": /--(.+)$/,
+        ";": /;(.+)$/,
+      },
+      multiLine: {
+        cStyle: /\/\*[\s\S]*?\*\//g,
+        python: /(?:'''[\s\S]*?''')|(?:"""[\s\S]*?""")/g,
+        html: /<!--[\s\S]*?-->/g,
+      },
+    };
+
+    const excludePatterns = [
+      /\*\*\/\*.*\*\.\{.*\}/,
+      /\*\*\/node_modules\/\*\*/,
+      /\*\.\{.*\}/,
+      /\$\{.*\}/,
+      /findFiles/,
+      /vscode\.workspace/,
+      /RelativePattern/,
+      /workspaceFolders/,
+      /await.*\(/,
+      /const.*=/,
+      /let.*=/,
+      /var.*=/,
+      /function.*\(/,
+      /\/\//,
+      /['"`].*node_modules.*['"`]/,
+      /['"`].*\*\*\/.*['"`]/,
+      /['"`].*\.\{.*\}.*['"`]/,
+      /new [A-Za-z]+\(/,
+      /^\s*import\s+/,
+      /^\s*export\s+/,
+      /^\s*const\s+/,
+      /^\s*let\s+/,
+      /^\s*var\s+/,
+      /^\s*function\s+/,
+      /^\s*class\s+/,
+      /^\s*interface\s+/,
+      /^\s*type\s+/,
+      /^\s*enum\s+/,
+      /^\s*namespace\s+/,
+      /^\s*module\s+/,
+      /^\s*return\s+/,
+      /^\s*if\s*\(/,
+      /^\s*for\s*\(/,
+      /^\s*while\s*\(/,
+      /^\s*switch\s*\(/,
+      /^\s*case\s+/,
+    ];
+
+    function isComment(text: string): boolean {
+      if (text.includes("**/node_modules/**")) {
+        return false;
+      }
+
+      if (
+        text.includes("findFiles") ||
+        text.includes("vscode.workspace") ||
+        text.includes("workspaceFolders")
+      ) {
+        return false;
+      }
+
+      if (/\s*=\s*['"`].*['"`]\s*;?\s*$/.test(text)) {
+        return false;
+      }
+
+      if (/await.*\(.*\)/.test(text) || /\.then\(.*\)/.test(text)) {
+        return false;
+      }
+
+      for (const pattern of excludePatterns) {
+        if (pattern.test(text)) {
+          return false;
+        }
+      }
+
+      const stripped = text.trim().replace(/^["'`](.*)["'`]$/, "$1");
+
+      for (const pattern of excludePatterns) {
+        if (pattern.test(stripped)) {
+          return false;
+        }
+      }
+
+      const quotedContent = text.match(/["'`](.*?)["'`]/g);
+      if (quotedContent) {
+        for (const quoted of quotedContent) {
+          const content = quoted.substring(1, quoted.length - 1);
+          if (
+            content.includes("node_modules") ||
+            content.includes("*.{") ||
+            content.includes("**/")
+          ) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+    }
+
     for (const file of filesToSearch) {
       try {
         const document = await vscode.workspace.openTextDocument(file);
@@ -40,72 +145,175 @@ export async function searchComments(query: string): Promise<any[]> {
         const fileExt = file.path.split(".").pop()?.toLowerCase() || "";
         const isMarkdown = ["md", "mdx", "markdown"].includes(fileExt);
 
-        let lines: string[] = [];
-        let lineMap: { originalLine: number; content: string }[] = [];
+        const multilineComments: { text: string; lineNumber: number }[] = [];
+
+        if (
+          [
+            "js",
+            "ts",
+            "jsx",
+            "tsx",
+            "java",
+            "c",
+            "cpp",
+            "cs",
+            "go",
+            "php",
+            "swift",
+            "kt",
+            "scala",
+            "css",
+            "scss",
+            "less",
+          ].includes(fileExt)
+        ) {
+          const cStyleRegex = commentPatterns.multiLine.cStyle;
+          let match;
+          while ((match = cStyleRegex.exec(text)) !== null) {
+            const comment = match[0];
+            const lineNumber =
+              text.substring(0, match.index).split("\n").length - 1;
+            const cleanedComment = comment
+              .replace(/^\/\*+/, "")
+              .replace(/\*+\/$/, "")
+              .trim();
+
+            if (cleanedComment.length > 0 && isComment(cleanedComment)) {
+              multilineComments.push({ text: cleanedComment, lineNumber });
+            }
+          }
+        }
+
+        if (fileExt === "py") {
+          const pythonRegex = commentPatterns.multiLine.python;
+          let match;
+          while ((match = pythonRegex.exec(text)) !== null) {
+            const comment = match[0];
+            const quoteType = comment.startsWith('"""') ? '"""' : "'''";
+            const lineNumber =
+              text.substring(0, match.index).split("\n").length - 1;
+            const cleanedComment = comment
+              .substring(quoteType.length, comment.length - quoteType.length)
+              .trim();
+
+            if (cleanedComment.length > 0 && isComment(cleanedComment)) {
+              multilineComments.push({ text: cleanedComment, lineNumber });
+            }
+          }
+        }
+
+        if (["html", "xml", "svg", "md", "mdx", "markdown"].includes(fileExt)) {
+          const htmlRegex = commentPatterns.multiLine.html;
+          let match;
+          while ((match = htmlRegex.exec(text)) !== null) {
+            const comment = match[0];
+            const lineNumber =
+              text.substring(0, match.index).split("\n").length - 1;
+            const cleanedComment = comment
+              .replace(/^<!--\s*/, "")
+              .replace(/\s*-->$/, "")
+              .trim();
+
+            if (cleanedComment.length > 0 && isComment(cleanedComment)) {
+              multilineComments.push({ text: cleanedComment, lineNumber });
+            }
+          }
+        }
 
         if (fileExt === "ipynb") {
           try {
             const notebookContent = JSON.parse(text);
-
             if (notebookContent.cells) {
               let lineCounter = 0;
+              notebookContent.cells.forEach((cell: any) => {
+                if (cell.cell_type === "markdown" && cell.source) {
+                  const source = Array.isArray(cell.source)
+                    ? cell.source.join("")
+                    : cell.source;
+                  if (source.trim().length > 0 && isComment(source)) {
+                    multilineComments.push({
+                      text: source,
+                      lineNumber: lineCounter,
+                    });
+                  }
+                  lineCounter += source.split(/\r?\n/).length;
+                } else if (cell.cell_type === "code" && cell.source) {
+                  const source = Array.isArray(cell.source)
+                    ? cell.source.join("")
+                    : cell.source;
+                  const lines = source.split(/\r?\n/);
 
-              notebookContent.cells.forEach((cell: any, cellIndex: number) => {
-                if (cell.source) {
-                  const sourceArray = Array.isArray(cell.source)
-                    ? cell.source
-                    : cell.source.split(/\r?\n/);
+                  let inMultilineComment = false;
+                  let quoteType = "";
+                  let commentStart = 0;
+                  let commentText = "";
 
-                  sourceArray.forEach((line: string, i: number) => {
-                    const cleanLine = line.replace(/\\n$/, "");
+                  for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
 
-                    if (cell.cell_type === "code") {
-                      if (cleanLine.trim().startsWith("#")) {
-                        lines.push(cleanLine);
-                        lineMap.push({
-                          originalLine: lineCounter + i,
-                          content: cleanLine,
-                        });
+                    if (!inMultilineComment) {
+                      if (line.startsWith('"""') || line.startsWith("'''")) {
+                        inMultilineComment = true;
+                        quoteType = line.startsWith('"""') ? '"""' : "'''";
+                        commentStart = lineCounter + i;
+                        commentText = line.substring(3);
+
+                        if (line.endsWith(quoteType) && line.length > 6) {
+                          inMultilineComment = false;
+                          commentText = commentText
+                            .substring(0, commentText.length - 3)
+                            .trim();
+
+                          if (isComment(commentText)) {
+                            multilineComments.push({
+                              text: commentText,
+                              lineNumber: commentStart,
+                            });
+                          }
+                          commentText = "";
+                        }
+                      } else if (line.startsWith("#")) {
+                        const commentText = line.substring(1).trim();
+                        if (isComment(commentText)) {
+                          multilineComments.push({
+                            text: commentText,
+                            lineNumber: lineCounter + i,
+                          });
+                        }
                       }
-                    } else if (cell.cell_type === "markdown") {
-                      if (cleanLine.length > 0) {
-                        lines.push(cleanLine);
-                        lineMap.push({
-                          originalLine: lineCounter + i,
-                          content: cleanLine,
-                        });
+                    } else {
+                      if (line.endsWith(quoteType)) {
+                        inMultilineComment = false;
+                        commentText +=
+                          "\n" +
+                          line.substring(0, line.lastIndexOf(quoteType)).trim();
+
+                        if (isComment(commentText)) {
+                          multilineComments.push({
+                            text: commentText,
+                            lineNumber: commentStart,
+                          });
+                        }
+                        commentText = "";
+                      } else {
+                        commentText += "\n" + line.trim();
                       }
                     }
-                  });
+                  }
 
-                  lineCounter += sourceArray.length;
+                  lineCounter += lines.length;
                 }
               });
             }
           } catch (e) {
-            console.error("Error parsing ipynb for comments:", e);
-            lines = text.split(/\r?\n/);
-            lines.forEach((line, i) => {
-              lineMap.push({
-                originalLine: i,
-                content: line,
-              });
-            });
+            console.error("Error parsing Jupyter notebook:", e);
           }
-        } else {
-          lines = text.split(/\r?\n/);
-          lines.forEach((line, i) => {
-            lineMap.push({
-              originalLine: i,
-              content: line,
-            });
-          });
         }
 
-        const multilineComments = extractMultilineComments(text, fileExt);
         for (const comment of multilineComments) {
           if (comment.text.toLowerCase().includes(query.toLowerCase())) {
             let displayText = comment.text;
+
             if (
               isMarkdown &&
               displayText.startsWith("<!--") &&
@@ -114,25 +322,23 @@ export async function searchComments(query: string): Promise<any[]> {
               displayText = displayText
                 .substring(4, displayText.length - 3)
                 .trim();
-              if (displayText.includes("\n")) {
-                displayText = displayText.split("\n")[0].trim() + "...";
-              }
-            } else if (comment.text.includes("\n")) {
-              displayText = comment.text.split("\n")[0].trim() + "...";
             }
 
-            const uniqueKey = `${file.toString()}:${
-              comment.lineNumber
-            }:${displayText}`;
-            if (!processedLines.has(uniqueKey)) {
-              processedLines.add(uniqueKey);
-              commentResults.push({
-                type: "comment",
-                name: displayText,
-                path: vscode.workspace.asRelativePath(file),
-                uri: file.toString(),
-                lineNumber: comment.lineNumber,
-              });
+            if (displayText.includes("\n")) {
+              displayText = displayText.split("\n")[0].trim() + "...";
+            }
+            if (displayText.length > 100) {
+              displayText = displayText.substring(0, 100) + "...";
+            }
+
+            if (isComment(displayText)) {
+              addCommentResult(
+                displayText,
+                file,
+                comment.lineNumber,
+                processedLines,
+                commentResults
+              );
 
               if (commentResults.length >= 50) {
                 break;
@@ -141,104 +347,124 @@ export async function searchComments(query: string): Promise<any[]> {
           }
         }
 
+        if (commentResults.length >= 50) {
+          continue;
+        }
+
+        const lines = text.split(/\r?\n/);
         const multilineLineNumbers = new Set(
-          multilineComments.map((c: { lineNumber: any }) => c.lineNumber)
+          multilineComments.map((c) => c.lineNumber)
         );
 
         for (let i = 0; i < lines.length; i++) {
-          const currentLine =
-            fileExt === "ipynb" ? lineMap[i].content : lines[i];
-          const originalLineNumber =
-            fileExt === "ipynb" ? lineMap[i].originalLine : i;
-
-          if (multilineLineNumbers.has(originalLineNumber)) {
+          if (multilineLineNumbers.has(i)) {
             continue;
           }
 
-          const line = currentLine.trim();
-          if (!line) continue;
+          const line = lines[i].trim();
+          if (!line) {
+            continue;
+          }
 
-          let isComment = false;
-          let commentStart = -1;
+          let commentText = "";
 
-          if (line.startsWith("//")) {
-            isComment = true;
-            commentStart = 2;
-          } else if (line.startsWith("#")) {
-            isComment = true;
-            commentStart = 1;
-          } else if (line.startsWith("<!--")) {
-            isComment = true;
-            commentStart = 4;
-          } else if (line.startsWith("--")) {
-            isComment = true;
-            commentStart = 2;
-          } else if (line.startsWith(";")) {
-            isComment = true;
-            commentStart = 1;
-          } else if (line.startsWith("/*") && line.endsWith("*/")) {
-            isComment = true;
-            commentStart = 2;
-            const endMarker = line.lastIndexOf("*/");
-            if (endMarker > 2) {
-              const commentText = line
-                .substring(commentStart, endMarker)
-                .trim();
-
-              if (commentText.toLowerCase().includes(query.toLowerCase())) {
-                const uniqueKey = `${file.toString()}:${originalLineNumber}:${commentText}`;
-                if (!processedLines.has(uniqueKey)) {
-                  processedLines.add(uniqueKey);
-                  commentResults.push({
-                    type: "comment",
-                    name: commentText,
-                    path: vscode.workspace.asRelativePath(file),
-                    uri: file.toString(),
-                    lineNumber: originalLineNumber,
-                  });
-
-                  if (commentResults.length >= 50) {
-                    break;
-                  }
-                }
-              }
-              continue;
-            }
-          } else if (line.startsWith("*") && !line.startsWith("*/")) {
-            if (
-              i > 0 &&
-              (lines[i - 1].trim().startsWith("/*") ||
-                lines[i - 1].trim().startsWith("*"))
-            ) {
-              isComment = true;
-              commentStart = 1;
+          if (
+            [
+              "js",
+              "ts",
+              "jsx",
+              "tsx",
+              "java",
+              "c",
+              "cpp",
+              "cs",
+              "go",
+              "php",
+              "swift",
+              "kt",
+              "scala",
+            ].includes(fileExt)
+          ) {
+            const match = line.match(commentPatterns.singleLine["//"]);
+            if (match && match[1]) {
+              commentText = match[1].trim();
             }
           }
 
-          if (isComment && commentStart >= 0) {
-            let commentText = line.substring(commentStart).trim();
+          if (
+            ["py", "rb", "sh", "bash", "zsh", "yml", "yaml"].includes(
+              fileExt
+            ) &&
+            !commentText
+          ) {
+            const match = line.match(commentPatterns.singleLine["#"]);
+            if (match && match[1]) {
+              commentText = match[1].trim();
+            }
+          }
 
-            if (commentText.toLowerCase().includes(query.toLowerCase())) {
-              const uniqueKey = `${file.toString()}:${originalLineNumber}:${commentText}`;
-              if (!processedLines.has(uniqueKey)) {
-                processedLines.add(uniqueKey);
-                commentResults.push({
-                  type: "comment",
-                  name: commentText,
-                  path: vscode.workspace.asRelativePath(file),
-                  uri: file.toString(),
-                  lineNumber: originalLineNumber,
-                });
+          if (["sql", "lua"].includes(fileExt) && !commentText) {
+            const match = line.match(commentPatterns.singleLine["--"]);
+            if (match && match[1]) {
+              commentText = match[1].trim();
+            }
+          }
 
-                if (commentResults.length >= 50) {
-                  break;
-                }
-              }
+          if (["lisp", "clj", "scm"].includes(fileExt) && !commentText) {
+            const match = line.match(commentPatterns.singleLine[";"]);
+            if (match && match[1]) {
+              commentText = match[1].trim();
+            }
+          }
+
+          if (!commentText) {
+            if (line.startsWith("//")) {
+              commentText = line.substring(2).trim();
+            } else if (line.startsWith("#")) {
+              commentText = line.substring(1).trim();
+            } else if (line.startsWith("--")) {
+              commentText = line.substring(2).trim();
+            } else if (line.startsWith(";")) {
+              commentText = line.substring(1).trim();
+            } else if (
+              line.startsWith("/*") &&
+              line.endsWith("*/") &&
+              line.length > 4
+            ) {
+              commentText = line.substring(2, line.length - 2).trim();
+            } else if (
+              line.startsWith("<!--") &&
+              line.endsWith("-->") &&
+              line.length > 7
+            ) {
+              commentText = line.substring(4, line.length - 3).trim();
+            }
+          }
+
+          if (
+            commentText &&
+            commentText.toLowerCase().includes(query.toLowerCase()) &&
+            isComment(commentText)
+          ) {
+            addCommentResult(
+              commentText,
+              file,
+              i,
+              processedLines,
+              commentResults
+            );
+
+            if (commentResults.length >= 50) {
+              break;
             }
           }
         }
       } catch (err) {
         continue;
+      }
+
+      if (commentResults.length >= 50) {
+        break;
       }
     }
 
@@ -246,6 +472,31 @@ export async function searchComments(query: string): Promise<any[]> {
   } catch (error) {
     console.error("Comment search error:", error);
     return [];
+  }
+}
+
+function addCommentResult(
+  commentText: string,
+  file: vscode.Uri,
+  lineNumber: number,
+  processedLines: Set<string>,
+  commentResults: any[]
+): void {
+  commentText = commentText.trim();
+  if (commentText.length > 100) {
+    commentText = commentText.substring(0, 100) + "...";
+  }
+
+  const uniqueKey = `${file.toString()}:${lineNumber}:${commentText}`;
+  if (!processedLines.has(uniqueKey)) {
+    processedLines.add(uniqueKey);
+    commentResults.push({
+      type: "comment",
+      name: commentText,
+      path: vscode.workspace.asRelativePath(file),
+      uri: file.toString(),
+      lineNumber: lineNumber,
+    });
   }
 }
 
