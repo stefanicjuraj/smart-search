@@ -1,7 +1,7 @@
 {
   "name": "smart-search",
   "displayName": "Smart Search",
-  "description": "Advanced search functionality for project files, text, functions, variables, docs, configs, and comments",
+  "description": "Search for project files, text, functions, variables, docs, configs, and comments",
   "version": "0.0.15",
   "publisher": "jurajstefanic",
   "icon": "assets/icons/icon.png",
