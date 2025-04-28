@@ -65,3 +65,7 @@ An extension for advanced search functionality. The extension supports the follo
 ### Pinned
 
 <img src="./assets/images/pinned.png" />
+
+### Settings
+
+<img src="./assets/images/settings.png" />
