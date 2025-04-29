@@ -61,6 +61,13 @@ class SearchPanel {
       }
     );
 
+    panel.iconPath = vscode.Uri.joinPath(
+      extensionUri,
+      "assets",
+      "icons",
+      "search.png"
+    );
+
     SearchPanel.currentPanel = new SearchPanel(panel, extensionUri, context);
   }
 
