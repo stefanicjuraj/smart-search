@@ -17,7 +17,7 @@ export async function searchText(query: string): Promise<any[]> {
       filePattern,
       "**/node_modules/**"
     );
-    const filesToSearch = files.slice(0, 20);
+    const filesToSearch = files.slice(0, 50);
 
     for (const file of filesToSearch) {
       try {

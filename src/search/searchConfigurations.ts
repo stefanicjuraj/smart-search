@@ -8,7 +8,7 @@ export async function searchConfigurations(query: string): Promise<any[]> {
     );
 
     const fileResults = configFiles
-      .slice(0, 25)
+      .slice(0, 50)
       .map((uri) => {
         const fileName = uri.path.split("/").pop() || "";
         return {

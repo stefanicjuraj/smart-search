@@ -31,7 +31,7 @@ export async function searchComments(query: string): Promise<any[]> {
 
         return true;
       })
-      .slice(0, 25);
+      .slice(0, 50);
 
     const commentPatterns = {
       singleLine: {

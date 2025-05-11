@@ -8,7 +8,7 @@ export async function searchDocumentation(query: string): Promise<any[]> {
     );
 
     const fileResults = docFiles
-      .slice(0, 25)
+      .slice(0, 50)
       .map((uri) => {
         const fileName = uri.path.split("/").pop() || "";
         return {
@@ -30,7 +30,7 @@ export async function searchDocumentation(query: string): Promise<any[]> {
       docPattern,
       "**/node_modules/**"
     );
-    const filesToSearch = allDocFiles.slice(0, 15);
+    const filesToSearch = allDocFiles.slice(0, 50);
     const contentResults: any[] = [];
 
     for (const file of filesToSearch) {
