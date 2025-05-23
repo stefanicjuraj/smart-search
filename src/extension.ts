@@ -38,6 +38,20 @@ class SearchPanel {
   ];
   private _disabledTabs: string[] = [];
 
+  private normalizePathToWorkspace(path: string): string {
+    if (!path) return "";
+
+    if (
+      vscode.workspace.workspaceFolders &&
+      vscode.workspace.workspaceFolders.length > 0
+    ) {
+      if (path.includes(":") || path.startsWith("/")) {
+        return vscode.workspace.asRelativePath(path, false);
+      }
+    }
+    return path;
+  }
+
   public static createOrShow(
     extensionUri: vscode.Uri,
     context: vscode.ExtensionContext
@@ -971,6 +985,39 @@ class SearchPanel {
           currentCategory = previousState.category || 'all';
           pinnedResults = previousState.pinnedResults || [];
           
+          function normalizePathDisplay(path) {
+            if (!path) return '';
+            
+            if (path.includes(':') || path.startsWith('/')) {
+              const parts = path.split(/[\\/]/);
+              
+              if (parts[0] && parts[0].includes(':')) {
+                parts.shift();
+              }
+              
+              const cleanParts = parts.filter(p => p.trim().length > 0);
+              
+              if (cleanParts.length > 2) {
+                const projectIndicators = ['src', 'app', 'lib', 'test', 'source', 'docs'];
+                
+                let startIndex = -1;
+                for (let i = 0; i < cleanParts.length; i++) {
+                  if (projectIndicators.includes(cleanParts[i].toLowerCase()) && i > 0) {
+                    startIndex = i - 1;
+                    break;
+                  }
+                }
+                
+                if (startIndex === -1) {
+                  startIndex = Math.max(0, cleanParts.length - 3);
+                }
+                
+                return cleanParts.slice(startIndex).join('/');
+              }
+            }
+            return path;
+          }
+          
           function isPinned(item) {
             if (!item || !item.uri) return false;
             const itemId = \`\${item.uri}:\${item.lineNumber ?? 0}:\${item.name}\`;
@@ -1477,7 +1524,7 @@ class SearchPanel {
               for (const [key, group] of groupedResults.entries()) {
                 const item = group.mainItem;
                 const iconSrc = iconSources[item.type] || '';
-                let path = item.path || '';
+                let path = normalizePathDisplay(item.path || '');
                 
                 let displayName = item.name;
                 let fullName = item.name;
@@ -1602,7 +1649,7 @@ class SearchPanel {
             } else {
               searchResults.forEach((item) => {
                 const iconSrc = iconSources[item.type] || '';
-                let path = item.path || '';
+                let path = normalizePathDisplay(item.path || '');
                 
                 let displayName = item.name;
                 let fullName = item.name;
