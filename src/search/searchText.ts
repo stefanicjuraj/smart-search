@@ -1,6 +1,10 @@
 import * as vscode from "vscode";
+import { generateExcludePattern } from "../utils/getCommentFormats";
 
-export async function searchText(query: string): Promise<any[]> {
+export async function searchText(
+  query: string,
+  excludedFolders: string[] = ["node_modules"]
+): Promise<any[]> {
   if (!query || query.length < 2) {
     return [];
   }
@@ -13,10 +17,8 @@ export async function searchText(query: string): Promise<any[]> {
       "**/*.{js,ts,jsx,tsx,html,css,md,json,py,java,c,cpp,h,hpp,ipynb}"
     );
 
-    const files = await vscode.workspace.findFiles(
-      filePattern,
-      "**/node_modules/**"
-    );
+    const excludePattern = generateExcludePattern(excludedFolders);
+    const files = await vscode.workspace.findFiles(filePattern, excludePattern);
     const filesToSearch = files.slice(0, 50);
 
     for (const file of filesToSearch) {

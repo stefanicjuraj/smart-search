@@ -5,6 +5,7 @@ import { searchSymbols } from "./search/searchSymbols";
 import { searchDocumentation } from "./search/searchDocumentation";
 import { searchConfigurations } from "./search/searchConfigurations";
 import { searchComments } from "./search/searchComments";
+import { DEFAULT_EXCLUDED_FOLDERS } from "./utils/getCommentFormats";
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Extension "smart-search" is now active');
@@ -37,6 +38,8 @@ class SearchPanel {
     "pinned",
   ];
   private _disabledTabs: string[] = [];
+  private _excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS;
+  private _allFolders: string[] = [];
 
   private normalizePathToWorkspace(path: string): string {
     if (!path) return "";
@@ -118,6 +121,14 @@ class SearchPanel {
       []
     );
 
+    this._excludedFolders = this._extensionContext.globalState.get(
+      "smartSearch.excludedFolders",
+      DEFAULT_EXCLUDED_FOLDERS
+    );
+
+    this._allFolders = [];
+    this.discoverWorkspaceFolders();
+
     this._update();
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -145,6 +156,12 @@ class SearchPanel {
             tabOrder: this._tabOrder,
             disabledTabs: this._disabledTabs,
           });
+
+          this._panel.webview.postMessage({
+            command: "folderSettings",
+            excludedFolders: this._excludedFolders,
+            allFolders: this._allFolders,
+          });
         }
       },
       undefined,
@@ -171,6 +188,9 @@ class SearchPanel {
             return;
           case "toggleTabVisibility":
             this.toggleTabVisibility(message.tabCategory);
+            return;
+          case "updateExcludedFolders":
+            this.updateExcludedFolders(message.excludedFolders);
             return;
         }
       },
@@ -210,6 +230,57 @@ class SearchPanel {
       tabOrder: this._tabOrder,
       disabledTabs: this._disabledTabs,
     });
+  }
+
+  private updateExcludedFolders(excludedFolders: string[]) {
+    if (!excludedFolders || !Array.isArray(excludedFolders)) return;
+
+    this._excludedFolders = excludedFolders;
+    this._extensionContext.globalState.update(
+      "smartSearch.excludedFolders",
+      this._excludedFolders
+    );
+  }
+
+  private async discoverWorkspaceFolders() {
+    try {
+      if (
+        vscode.workspace.workspaceFolders &&
+        vscode.workspace.workspaceFolders.length > 0
+      ) {
+        const workspaceRoot = vscode.workspace.workspaceFolders[0];
+        const entries = await vscode.workspace.fs.readDirectory(
+          workspaceRoot.uri
+        );
+
+        const existingFolders = entries
+          .filter(([name, type]) => type === vscode.FileType.Directory)
+          .map(([name]) => name);
+
+        const existingDefaultFolders = DEFAULT_EXCLUDED_FOLDERS.filter(
+          (folder) => existingFolders.includes(folder)
+        );
+
+        const additionalFolders = existingFolders.filter(
+          (folder) =>
+            !DEFAULT_EXCLUDED_FOLDERS.includes(folder) &&
+            !folder.startsWith(".")
+        );
+
+        this._allFolders = [
+          ...existingDefaultFolders,
+          ...additionalFolders,
+        ].sort();
+
+        this._panel.webview.postMessage({
+          command: "folderSettings",
+          excludedFolders: this._excludedFolders,
+          allFolders: this._allFolders,
+        });
+      }
+    } catch (error) {
+      console.error("Error discovering workspace folders:", error);
+    }
   }
 
   private pinResult(item: any) {
@@ -306,12 +377,21 @@ class SearchPanel {
         );
         categoryCounts.pinned = results.length;
       } else {
-        const fileResults = await searchFiles(query);
-        const textResults = await searchText(query);
-        const symbolResults = await searchSymbols(query);
-        const docResults = await searchDocumentation(query);
-        const configResults = await searchConfigurations(query);
-        const commentResults = await searchComments(query);
+        const fileResults = await searchFiles(query, this._excludedFolders);
+        const textResults = await searchText(query, this._excludedFolders);
+        const symbolResults = await searchSymbols(query, this._excludedFolders);
+        const docResults = await searchDocumentation(
+          query,
+          this._excludedFolders
+        );
+        const configResults = await searchConfigurations(
+          query,
+          this._excludedFolders
+        );
+        const commentResults = await searchComments(
+          query,
+          this._excludedFolders
+        );
 
         categoryCounts.files = fileResults.length;
         categoryCounts.text = textResults.length;
@@ -691,18 +771,37 @@ class SearchPanel {
           background: var(--vscode-editor-background);
           border: 1px solid var(--vscode-panel-border);
           border-radius: 4px;
-          padding: 10px;
+          padding: 15px;
           z-index: 100;
-          width: 300px;
+          width: 350px;
+          max-height: 500px;
+          overflow-y: auto;
           box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
         }
         .tab-settings-panel.visible {
           display: block;
         }
         .tab-settings-title {
-          margin: 0 0 10px 0;
-          font-size: 14px;
+          margin: 0 0 15px 0;
+          font-size: 16px;
           font-weight: 600;
+        }
+        .settings-section {
+          margin-bottom: 20px;
+        }
+        .settings-section:last-child {
+          margin-bottom: 0;
+        }
+        .settings-section-title {
+          margin: 0 0 8px 0;
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--vscode-foreground);
+        }
+        .settings-description {
+          margin: 0 0 10px 0;
+          font-size: 12px;
+          color: var(--vscode-descriptionForeground);
         }
         .tab-reorder-list {
           list-style-type: none;
@@ -749,6 +848,27 @@ class SearchPanel {
         }
         .tab-draggable:active {
           cursor: grabbing;
+        }
+        .folder-exclude-list {
+          max-height: 200px;
+          overflow-y: auto;
+        }
+        .folder-exclude-item {
+          display: flex;
+          align-items: center;
+          padding: 4px 8px;
+          background: var(--vscode-input-background);
+          margin-bottom: 4px;
+          border-radius: 3px;
+          font-size: 12px;
+        }
+        .folder-exclude-checkbox {
+          margin-right: 8px;
+        }
+        .folder-exclude-label {
+          flex: 1;
+          cursor: pointer;
+          font-family: var(--vscode-editor-font-family);
         }
         .results {
           max-height: 500px;
@@ -927,11 +1047,23 @@ class SearchPanel {
             <img src="${settingsIconSrc}" alt="Settings" class="tab-icon" style="width: 18px; height: 18px;">
           </button>
           <div class="tab-settings-panel" id="tabSettingsPanel">
-            <h3 class="tab-settings-title">Tab Settings</h3>
-            <p>Drag to reorder tabs or toggle visibility</p>
-            <ul class="tab-reorder-list" id="tabReorderList">
-              <!-- Tab settings will be populated dynamically -->
-            </ul>
+            <h3 class="tab-settings-title">Search Settings</h3>
+            
+            <div class="settings-section">
+              <h4 class="settings-section-title">Tab Order & Visibility</h4>
+              <p class="settings-description">Drag to reorder tabs or toggle visibility</p>
+              <ul class="tab-reorder-list" id="tabReorderList">
+                <!-- Tab settings will be populated dynamically -->
+              </ul>
+            </div>
+            
+            <div class="settings-section">
+              <h4 class="settings-section-title">Excluded Folders</h4>
+              <p class="settings-description">Select folders to exclude from search</p>
+              <div class="folder-exclude-list" id="folderExcludeList">
+                <!-- Folder settings will be populated dynamically -->
+              </div>
+            </div>
           </div>
           <div class="tabs" id="tabsContainer">
             <!-- Tabs will be populated dynamically -->
@@ -954,6 +1086,8 @@ class SearchPanel {
           let selectedResultIndex = -1;
           let tabOrder = ['all', 'files', 'text', 'symbols', 'docs', 'config', 'comments', 'pinned'];
           let disabledTabs = [];
+          let excludedFolders = ${JSON.stringify(DEFAULT_EXCLUDED_FOLDERS)};
+          let allFolders = [];
           
           const iconSources = {
             'all': '${allIconSrc}',
@@ -1039,6 +1173,7 @@ class SearchPanel {
             }, 200);
             
             setupTabSettings();
+            setupFolderSettings();
             renderTabs();
             
             document.querySelector('.container').addEventListener('click', (e) => {
@@ -1148,8 +1283,6 @@ class SearchPanel {
                     text: '',
                     category: 'pinned'
                   });
-                } else {
-                  displayNoResults('Type to search');
                 }
                 
                 document.getElementById('searchInput').focus();
@@ -1330,6 +1463,57 @@ class SearchPanel {
                   }
                 }
               });
+            });
+          }
+          
+          function setupFolderSettings() {
+            updateFolderSettingsPanel();
+          }
+          
+          function updateFolderSettingsPanel() {
+            const folderExcludeList = document.getElementById('folderExcludeList');
+            if (!folderExcludeList) return;
+            
+            folderExcludeList.innerHTML = '';
+            
+            const sortedFolders = allFolders && allFolders.length > 0 ? allFolders.sort() : [];
+            
+            sortedFolders.forEach(folderName => {
+              const folderItem = document.createElement('div');
+              folderItem.className = 'folder-exclude-item';
+              
+              const checkbox = document.createElement('input');
+              checkbox.type = 'checkbox';
+              checkbox.className = 'folder-exclude-checkbox';
+              checkbox.id = \`folder-\${folderName}\`;
+              checkbox.checked = excludedFolders.includes(folderName);
+              
+              const label = document.createElement('label');
+              label.className = 'folder-exclude-label';
+              label.htmlFor = \`folder-\${folderName}\`;
+              label.textContent = folderName;
+              
+              checkbox.addEventListener('change', () => {
+                if (checkbox.checked) {
+                  if (!excludedFolders.includes(folderName)) {
+                    excludedFolders.push(folderName);
+                  }
+                } else {
+                  const index = excludedFolders.indexOf(folderName);
+                  if (index !== -1) {
+                    excludedFolders.splice(index, 1);
+                  }
+                }
+                
+                vscode.postMessage({
+                  command: 'updateExcludedFolders',
+                  excludedFolders: excludedFolders
+                });
+              });
+              
+              folderItem.appendChild(checkbox);
+              folderItem.appendChild(label);
+              folderExcludeList.appendChild(folderItem);
             });
           }
           
@@ -1876,6 +2060,17 @@ class SearchPanel {
                 }
                 
                 renderTabs();
+                break;
+              case 'folderSettings':
+                if (message.excludedFolders && Array.isArray(message.excludedFolders)) {
+                  excludedFolders = message.excludedFolders;
+                }
+                
+                if (message.allFolders && Array.isArray(message.allFolders)) {
+                  allFolders = message.allFolders;
+                }
+                
+                updateFolderSettingsPanel();
                 break;
               case 'focusSearchInput':
                 const searchInput = document.getElementById('searchInput');

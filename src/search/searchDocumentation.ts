@@ -1,10 +1,15 @@
 import * as vscode from "vscode";
+import { generateExcludePattern } from "../utils/getCommentFormats";
 
-export async function searchDocumentation(query: string): Promise<any[]> {
+export async function searchDocumentation(
+  query: string,
+  excludedFolders: string[] = ["node_modules"]
+): Promise<any[]> {
   try {
+    const excludePattern = generateExcludePattern(excludedFolders);
     const docFiles = await vscode.workspace.findFiles(
       `**/*${query}*.{md,mdx,rst,txt,markdown,mdown,markdn,textile,rdoc,org,creole,wiki,dokuwiki,mediawiki,pod,adoc,asciidoc,asc}`,
-      "**/node_modules/**"
+      excludePattern
     );
 
     const fileResults = docFiles
@@ -28,7 +33,7 @@ export async function searchDocumentation(query: string): Promise<any[]> {
 
     const allDocFiles = await vscode.workspace.findFiles(
       docPattern,
-      "**/node_modules/**"
+      excludePattern
     );
     const filesToSearch = allDocFiles.slice(0, 50);
     const contentResults: any[] = [];

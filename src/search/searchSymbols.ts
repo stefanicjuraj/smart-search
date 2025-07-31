@@ -1,6 +1,10 @@
 import * as vscode from "vscode";
+import { DEFAULT_EXCLUDED_FOLDERS } from "../utils/getCommentFormats";
 
-export async function searchSymbols(query: string): Promise<any[]> {
+export async function searchSymbols(
+  query: string,
+  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS
+): Promise<any[]> {
   if (!query || query.length < 2) {
     return [];
   }
@@ -10,7 +14,15 @@ export async function searchSymbols(query: string): Promise<any[]> {
       vscode.SymbolInformation[]
     >("vscode.executeWorkspaceSymbolProvider", query);
 
-    return symbols.slice(0, 50).map((symbol) => ({
+    const filteredSymbols = symbols.filter((symbol) => {
+      const relativePath = vscode.workspace.asRelativePath(symbol.location.uri);
+      const pathParts = relativePath.split("/");
+      const firstFolder = pathParts[0];
+
+      return !excludedFolders.includes(firstFolder);
+    });
+
+    return filteredSymbols.slice(0, 50).map((symbol) => ({
       type: "symbol",
       name: symbol.name,
       path: vscode.workspace.asRelativePath(symbol.location.uri),

@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
+import { generateExcludePattern } from "../utils/getCommentFormats";
 
-export async function searchComments(query: string): Promise<any[]> {
+export async function searchComments(query: string, excludedFolders: string[] = ["node_modules"]): Promise<any[]> {
   if (!query || query.length < 2) {
     return [];
   }
@@ -14,9 +15,10 @@ export async function searchComments(query: string): Promise<any[]> {
       "**/*.{js,ts,jsx,tsx,java,c,cpp,cs,go,php,py,rb,rs,swift,kt,scala,h,hpp,m,mm,jade,pug,vue,svelte,html,css,scss,less,dart,lua,md,mdx,markdown,ipynb}"
     );
 
+    const excludePattern = generateExcludePattern(excludedFolders);
     const files = await vscode.workspace.findFiles(
       codePattern,
-      "**/node_modules/**"
+      excludePattern
     );
 
     const filesToSearch = files
