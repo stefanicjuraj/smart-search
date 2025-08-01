@@ -40,7 +40,6 @@ class SearchPanel {
   private _disabledTabs: string[] = [];
   private _excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS;
   private _allFolders: string[] = [];
-
   private normalizePathToWorkspace(path: string): string {
     if (!path) return "";
 
@@ -742,6 +741,11 @@ class SearchPanel {
         .tab-icon {
           width: 16px;
           height: 16px;
+          filter: invert(1);
+        }
+        body.vscode-light .tab-icon,
+        body.vscode-high-contrast-light .tab-icon {
+          filter: invert(0);
         }
         .tabs-container {
           position: relative;
@@ -768,7 +772,11 @@ class SearchPanel {
           color: var(--vscode-button-foreground);
         }
         .tab-settings-toggle img {
-          filter: brightness(1.5);
+          filter: invert(1);
+        }
+        body.vscode-light .tab-settings-toggle img,
+        body.vscode-high-contrast-light .tab-settings-toggle img {
+          filter: invert(0);
         }
         .tab-settings-panel {
           display: none;
@@ -911,6 +919,11 @@ class SearchPanel {
         .result-icon img {
           width: 18px;
           height: 18px;
+          filter: invert(1);
+        }
+        body.vscode-light .result-icon img,
+        body.vscode-high-contrast-light .result-icon img {
+          filter: invert(0);
         }
         .result-content {
           display: flex;
@@ -1033,6 +1046,11 @@ class SearchPanel {
           width: 12px;
           height: 12px;
           margin-right: 4px;
+          filter: invert(1);
+        }
+        body.vscode-light .category-badge img,
+        body.vscode-high-contrast-light .category-badge img {
+          filter: invert(0);
         }
         .multi-category {
           padding-right: 120px;
