@@ -1,5 +1,8 @@
 import * as vscode from "vscode";
-import { DEFAULT_EXCLUDED_FOLDERS } from "../utils/getCommentFormats";
+import {
+  DEFAULT_EXCLUDED_FOLDERS,
+  SEARCH_LIMITS,
+} from "../utils/getCommentFormats";
 
 export async function searchSymbols(
   query: string,
@@ -22,15 +25,17 @@ export async function searchSymbols(
       return !excludedFolders.includes(firstFolder);
     });
 
-    return filteredSymbols.slice(0, 50).map((symbol) => ({
-      type: "symbol",
-      name: symbol.name,
-      path: vscode.workspace.asRelativePath(symbol.location.uri),
-      uri: symbol.location.uri.toString(),
-      lineNumber: symbol.location.range.start.line,
-      kind: symbol.kind,
-      kindName: getSymbolKindName(symbol.kind),
-    }));
+    return filteredSymbols
+      .slice(0, SEARCH_LIMITS.MAX_RESULTS_PER_SEARCH)
+      .map((symbol) => ({
+        type: "symbol",
+        name: symbol.name,
+        path: vscode.workspace.asRelativePath(symbol.location.uri),
+        uri: symbol.location.uri.toString(),
+        lineNumber: symbol.location.range.start.line,
+        kind: symbol.kind,
+        kindName: getSymbolKindName(symbol.kind),
+      }));
   } catch (error) {
     console.error("Symbol search error:", error);
     return [];

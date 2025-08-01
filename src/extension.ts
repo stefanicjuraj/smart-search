@@ -242,6 +242,35 @@ class SearchPanel {
     );
   }
 
+  private filterResults(results: any[], query: string): any[] {
+    return results.filter((item) => {
+      if (
+        !item ||
+        !item.name ||
+        typeof item.name !== "string" ||
+        item.name.trim().length === 0
+      ) {
+        return false;
+      }
+
+      if (
+        item.type === "text" ||
+        item.type === "doc" ||
+        item.type === "config" ||
+        item.type === "comment"
+      ) {
+        const contentWithoutQuery = item.name
+          .replace(new RegExp(query, "gi"), "")
+          .trim();
+        return (
+          item.name.length > query.length + 3 || contentWithoutQuery.length > 0
+        );
+      }
+
+      return true;
+    });
+  }
+
   private async discoverWorkspaceFolders() {
     try {
       if (
@@ -393,91 +422,69 @@ class SearchPanel {
           this._excludedFolders
         );
 
-        categoryCounts.files = fileResults.length;
-        categoryCounts.text = textResults.length;
-        categoryCounts.symbols = symbolResults.length;
-        categoryCounts.docs = docResults.length;
-        categoryCounts.config = configResults.length;
-        categoryCounts.comments = commentResults.length;
+        const filteredFileResults = this.filterResults(fileResults, query);
+        const filteredTextResults = this.filterResults(textResults, query);
+        const filteredSymbolResults = this.filterResults(symbolResults, query);
+        const filteredDocResults = this.filterResults(docResults, query);
+        const filteredConfigResults = this.filterResults(configResults, query);
+        const filteredCommentResults = this.filterResults(
+          commentResults,
+          query
+        );
+
+        categoryCounts.files = filteredFileResults.length;
+        categoryCounts.text = filteredTextResults.length;
+        categoryCounts.symbols = filteredSymbolResults.length;
+        categoryCounts.docs = filteredDocResults.length;
+        categoryCounts.config = filteredConfigResults.length;
+        categoryCounts.comments = filteredCommentResults.length;
         categoryCounts.all =
-          fileResults.length +
-          textResults.length +
-          symbolResults.length +
-          docResults.length +
-          configResults.length +
-          commentResults.length;
+          filteredFileResults.length +
+          filteredTextResults.length +
+          filteredSymbolResults.length +
+          filteredDocResults.length +
+          filteredConfigResults.length +
+          filteredCommentResults.length;
 
         switch (category) {
           case "all":
             results = [
-              ...fileResults,
-              ...textResults,
-              ...symbolResults,
-              ...docResults,
-              ...configResults,
-              ...commentResults,
+              ...filteredFileResults,
+              ...filteredTextResults,
+              ...filteredSymbolResults,
+              ...filteredDocResults,
+              ...filteredConfigResults,
+              ...filteredCommentResults,
             ];
             break;
           case "files":
-            results = fileResults;
+            results = filteredFileResults;
             break;
           case "text":
-            results = textResults;
+            results = filteredTextResults;
             break;
           case "symbols":
-            results = symbolResults;
+            results = filteredSymbolResults;
             break;
           case "docs":
-            results = docResults;
+            results = filteredDocResults;
             break;
           case "config":
-            results = configResults;
+            results = filteredConfigResults;
             break;
           case "comments":
-            results = commentResults;
+            results = filteredCommentResults;
             break;
           default:
             results = [
-              ...fileResults,
-              ...textResults,
-              ...symbolResults,
-              ...docResults,
-              ...configResults,
-              ...commentResults,
+              ...filteredFileResults,
+              ...filteredTextResults,
+              ...filteredSymbolResults,
+              ...filteredDocResults,
+              ...filteredConfigResults,
+              ...filteredCommentResults,
             ];
         }
-      }
-
-      results = results.filter((item) => {
-        if (
-          !item ||
-          !item.name ||
-          typeof item.name !== "string" ||
-          item.name.trim().length === 0
-        ) {
-          return false;
-        }
-
-        if (
-          item.type === "text" ||
-          item.type === "doc" ||
-          item.type === "config" ||
-          item.type === "comment"
-        ) {
-          const contentWithoutQuery = item.name
-            .replace(new RegExp(query, "gi"), "")
-            .trim();
-          return (
-            item.name.length > query.length + 3 ||
-            contentWithoutQuery.length > 0
-          );
-        }
-
-        return true;
-      });
-
-      if (category !== "pinned") {
-        categoryCounts[category] = results.length;
       }
 
       this._panel.webview.postMessage({
