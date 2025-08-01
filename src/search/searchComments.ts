@@ -1,7 +1,20 @@
 import * as vscode from "vscode";
-import { generateExcludePattern } from "../utils/getCommentFormats";
+import {
+  generateExcludePattern,
+  DEFAULT_EXCLUDED_FOLDERS,
+  FILE_PATTERNS,
+  SEARCH_LIMITS,
+  FILE_EXTENSIONS,
+  getCommentFormats,
+  truncateText,
+  getFileName,
+  getFileExtension,
+} from "../utils/getCommentFormats";
 
-export async function searchComments(query: string, excludedFolders: string[] = ["node_modules"]): Promise<any[]> {
+export async function searchComments(
+  query: string,
+  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS
+): Promise<any[]> {
   if (!query || query.length < 2) {
     return [];
   }
@@ -12,14 +25,11 @@ export async function searchComments(query: string, excludedFolders: string[] = 
 
     const codePattern = new vscode.RelativePattern(
       vscode.workspace.workspaceFolders?.[0] || "",
-      "**/*.{js,ts,jsx,tsx,java,c,cpp,cs,go,php,py,rb,rs,swift,kt,scala,h,hpp,m,mm,jade,pug,vue,svelte,html,css,scss,less,dart,lua,md,mdx,markdown,ipynb}"
+      FILE_PATTERNS.CODE_FILES
     );
 
     const excludePattern = generateExcludePattern(excludedFolders);
-    const files = await vscode.workspace.findFiles(
-      codePattern,
-      excludePattern
-    );
+    const files = await vscode.workspace.findFiles(codePattern, excludePattern);
 
     const filesToSearch = files
       .filter((file) => {
@@ -33,21 +43,9 @@ export async function searchComments(query: string, excludedFolders: string[] = 
 
         return true;
       })
-      .slice(0, 50);
+      .slice(0, SEARCH_LIMITS.MAX_FILES_TO_SEARCH);
 
-    const commentPatterns = {
-      singleLine: {
-        "//": /\/\/(.+)$/,
-        "#": /#(.+)$/,
-        "--": /--(.+)$/,
-        ";": /;(.+)$/,
-      },
-      multiLine: {
-        cStyle: /\/\*[\s\S]*?\*\//g,
-        python: /(?:'''[\s\S]*?''')|(?:"""[\s\S]*?""")/g,
-        html: /<!--[\s\S]*?-->/g,
-      },
-    };
+    const commentPatterns = getCommentFormats();
 
     const excludePatterns = [
       /\*\*\/\*.*\*\.\{.*\}/,
@@ -144,31 +142,12 @@ export async function searchComments(query: string, excludedFolders: string[] = 
       try {
         const document = await vscode.workspace.openTextDocument(file);
         const text = document.getText();
-        const fileExt = file.path.split(".").pop()?.toLowerCase() || "";
-        const isMarkdown = ["md", "mdx", "markdown"].includes(fileExt);
+        const fileExt = getFileExtension(file.path);
+        const isMarkdown = FILE_EXTENSIONS.MARKUP_LANGUAGES.includes(fileExt);
 
         const multilineComments: { text: string; lineNumber: number }[] = [];
 
-        if (
-          [
-            "js",
-            "ts",
-            "jsx",
-            "tsx",
-            "java",
-            "c",
-            "cpp",
-            "cs",
-            "go",
-            "php",
-            "swift",
-            "kt",
-            "scala",
-            "css",
-            "scss",
-            "less",
-          ].includes(fileExt)
-        ) {
+        if (FILE_EXTENSIONS.C_STYLE_LANGUAGES.includes(fileExt)) {
           const cStyleRegex = commentPatterns.multiLine.cStyle;
           let match;
           while ((match = cStyleRegex.exec(text)) !== null) {
@@ -186,7 +165,7 @@ export async function searchComments(query: string, excludedFolders: string[] = 
           }
         }
 
-        if (fileExt === "py") {
+        if (FILE_EXTENSIONS.PYTHON_LIKE.includes(fileExt)) {
           const pythonRegex = commentPatterns.multiLine.python;
           let match;
           while ((match = pythonRegex.exec(text)) !== null) {
@@ -204,7 +183,7 @@ export async function searchComments(query: string, excludedFolders: string[] = 
           }
         }
 
-        if (["html", "xml", "svg", "md", "mdx", "markdown"].includes(fileExt)) {
+        if (FILE_EXTENSIONS.MARKUP_LANGUAGES.includes(fileExt)) {
           const htmlRegex = commentPatterns.multiLine.html;
           let match;
           while ((match = htmlRegex.exec(text)) !== null) {
@@ -222,7 +201,7 @@ export async function searchComments(query: string, excludedFolders: string[] = 
           }
         }
 
-        if (fileExt === "ipynb") {
+        if (FILE_EXTENSIONS.NOTEBOOKS.includes(fileExt)) {
           try {
             const notebookContent = JSON.parse(text);
             if (notebookContent.cells) {
@@ -342,14 +321,16 @@ export async function searchComments(query: string, excludedFolders: string[] = 
                 commentResults
               );
 
-              if (commentResults.length >= 50) {
+              if (
+                commentResults.length >= SEARCH_LIMITS.MAX_RESULTS_PER_SEARCH
+              ) {
                 break;
               }
             }
           }
         }
 
-        if (commentResults.length >= 50) {
+        if (commentResults.length >= SEARCH_LIMITS.MAX_RESULTS_PER_SEARCH) {
           continue;
         }
 
@@ -370,23 +351,7 @@ export async function searchComments(query: string, excludedFolders: string[] = 
 
           let commentText = "";
 
-          if (
-            [
-              "js",
-              "ts",
-              "jsx",
-              "tsx",
-              "java",
-              "c",
-              "cpp",
-              "cs",
-              "go",
-              "php",
-              "swift",
-              "kt",
-              "scala",
-            ].includes(fileExt)
-          ) {
+          if (FILE_EXTENSIONS.C_STYLE_LANGUAGES.includes(fileExt)) {
             const match = line.match(commentPatterns.singleLine["//"]);
             if (match && match[1]) {
               commentText = match[1].trim();
@@ -394,9 +359,7 @@ export async function searchComments(query: string, excludedFolders: string[] = 
           }
 
           if (
-            ["py", "rb", "sh", "bash", "zsh", "yml", "yaml"].includes(
-              fileExt
-            ) &&
+            FILE_EXTENSIONS.HASH_COMMENT_LANGUAGES.includes(fileExt) &&
             !commentText
           ) {
             const match = line.match(commentPatterns.singleLine["#"]);
@@ -405,14 +368,20 @@ export async function searchComments(query: string, excludedFolders: string[] = 
             }
           }
 
-          if (["sql", "lua"].includes(fileExt) && !commentText) {
+          if (
+            FILE_EXTENSIONS.DASH_COMMENT_LANGUAGES.includes(fileExt) &&
+            !commentText
+          ) {
             const match = line.match(commentPatterns.singleLine["--"]);
             if (match && match[1]) {
               commentText = match[1].trim();
             }
           }
 
-          if (["lisp", "clj", "scm"].includes(fileExt) && !commentText) {
+          if (
+            FILE_EXTENSIONS.SEMICOLON_COMMENT_LANGUAGES.includes(fileExt) &&
+            !commentText
+          ) {
             const match = line.match(commentPatterns.singleLine[";"]);
             if (match && match[1]) {
               commentText = match[1].trim();
@@ -456,7 +425,7 @@ export async function searchComments(query: string, excludedFolders: string[] = 
               commentResults
             );
 
-            if (commentResults.length >= 50) {
+            if (commentResults.length >= SEARCH_LIMITS.MAX_RESULTS_PER_SEARCH) {
               break;
             }
           }
@@ -465,7 +434,7 @@ export async function searchComments(query: string, excludedFolders: string[] = 
         continue;
       }
 
-      if (commentResults.length >= 50) {
+      if (commentResults.length >= SEARCH_LIMITS.MAX_RESULTS_PER_SEARCH) {
         break;
       }
     }
@@ -485,9 +454,7 @@ function addCommentResult(
   commentResults: any[]
 ): void {
   commentText = commentText.trim();
-  if (commentText.length > 100) {
-    commentText = commentText.substring(0, 100) + "...";
-  }
+  commentText = truncateText(commentText, 100);
 
   const uniqueKey = `${file.toString()}:${lineNumber}:${commentText}`;
   if (!processedLines.has(uniqueKey)) {

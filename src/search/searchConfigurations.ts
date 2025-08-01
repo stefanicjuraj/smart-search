@@ -1,21 +1,28 @@
 import * as vscode from "vscode";
-import { generateExcludePattern } from "../utils/getCommentFormats";
+import {
+  generateExcludePattern,
+  DEFAULT_EXCLUDED_FOLDERS,
+  FILE_PATTERNS,
+  SEARCH_LIMITS,
+  hasSubstantialContent,
+  getFileName,
+} from "../utils/getCommentFormats";
 
 export async function searchConfigurations(
   query: string,
-  excludedFolders: string[] = ["node_modules"]
+  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS
 ): Promise<any[]> {
   try {
     const excludePattern = generateExcludePattern(excludedFolders);
     const configFiles = await vscode.workspace.findFiles(
-      `**/*${query}*.{json,yaml,yml,ini,toml,xml,conf,config,env,properties,props,plist,cfg,rc}`,
+      FILE_PATTERNS.CONFIGURATION.replace("**/*.", `**/*${query}*.`),
       excludePattern
     );
 
     const fileResults = configFiles
-      .slice(0, 50)
+      .slice(0, SEARCH_LIMITS.MAX_FILES_TO_SEARCH)
       .map((uri) => {
-        const fileName = uri.path.split("/").pop() || "";
+        const fileName = getFileName(uri.path);
         return {
           type: "config",
           name: fileName,
@@ -28,14 +35,17 @@ export async function searchConfigurations(
 
     const configPattern = new vscode.RelativePattern(
       vscode.workspace.workspaceFolders?.[0] || "",
-      "**/*.{json,yaml,yml,ini,toml,xml,conf,config,env,properties,props,plist,cfg,rc}"
+      FILE_PATTERNS.CONFIGURATION
     );
 
     const allConfigFiles = await vscode.workspace.findFiles(
       configPattern,
       excludePattern
     );
-    const filesToSearch = allConfigFiles.slice(0, 15);
+    const filesToSearch = allConfigFiles.slice(
+      0,
+      SEARCH_LIMITS.MAX_CONFIG_FILES_TO_SEARCH
+    );
     const contentResults: any[] = [];
 
     for (const file of filesToSearch) {
@@ -43,21 +53,13 @@ export async function searchConfigurations(
         const document = await vscode.workspace.openTextDocument(file);
         const text = document.getText();
         const lines = text.split(/\r?\n/);
-        const fileName = file.path.split("/").pop() || "";
+        const fileName = getFileName(file.path);
 
         for (let i = 0; i < lines.length; i++) {
           if (lines[i].toLowerCase().includes(query.toLowerCase())) {
             const lineText = lines[i].trim();
             if (lineText && lineText.length > 0) {
-              const meaningfulContent = lineText
-                .replace(new RegExp(query, "gi"), "")
-                .trim();
-
-              const hasSubstantialContent =
-                lineText.length > query.length + 5 ||
-                meaningfulContent.length > 0;
-
-              if (hasSubstantialContent) {
+              if (hasSubstantialContent(lineText, query)) {
                 contentResults.push({
                   type: "config",
                   name: lineText,
@@ -69,7 +71,7 @@ export async function searchConfigurations(
               }
             }
 
-            if (contentResults.length >= 25) {
+            if (contentResults.length >= SEARCH_LIMITS.MAX_CONFIG_CONTENT_RESULTS) {
               break;
             }
           }
@@ -79,7 +81,7 @@ export async function searchConfigurations(
       }
     }
 
-    return [...fileResults, ...contentResults].slice(0, 50);
+    return [...fileResults, ...contentResults].slice(0, SEARCH_LIMITS.MAX_RESULTS_PER_SEARCH);
   } catch (error) {
     console.error("Config search error:", error);
     return [];

@@ -1,21 +1,27 @@
 import * as vscode from "vscode";
-import { generateExcludePattern } from "../utils/getCommentFormats";
+import {
+  generateExcludePattern,
+  DEFAULT_EXCLUDED_FOLDERS,
+  FILE_PATTERNS,
+  SEARCH_LIMITS,
+  getFileName,
+} from "../utils/getCommentFormats";
 
 export async function searchFiles(
   query: string,
-  excludedFolders: string[] = ["node_modules"]
+  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS
 ): Promise<any[]> {
   try {
     const excludePattern = generateExcludePattern(excludedFolders);
     const files = await vscode.workspace.findFiles(
-      `**/*${query}*.{js,ts,jsx,tsx,html,css,md,json,py,java,c,cpp,h,hpp,ipynb}`,
+      FILE_PATTERNS.ALL_FILES.replace("**/*.", `**/*${query}*.`),
       excludePattern
     );
 
     if (query && query.length >= 2) {
       try {
         const notebookFiles = await vscode.workspace.findFiles(
-          "**/*.ipynb",
+          FILE_PATTERNS.NOTEBOOKS,
           excludePattern
         );
 
@@ -41,9 +47,9 @@ export async function searchFiles(
     }
 
     return files
-      .slice(0, 50)
+      .slice(0, SEARCH_LIMITS.MAX_FILES_TO_SEARCH)
       .map((uri) => {
-        const fileName = uri.path.split("/").pop() || "";
+        const fileName = getFileName(uri.path);
         return {
           type: "file",
           name: fileName,
