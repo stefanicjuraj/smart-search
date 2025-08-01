@@ -68,4 +68,6 @@ An extension for advanced search functionality. The extension supports the follo
 
 ### Settings
 
-<img src="./assets/images/settings.png" />
+<img src="./assets/images/settings-tab.png" />
+
+<img src="./assets/images/settings-excluded-folders.png" />
