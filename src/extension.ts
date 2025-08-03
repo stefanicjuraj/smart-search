@@ -277,22 +277,56 @@ class SearchPanel {
         vscode.workspace.workspaceFolders.length > 0
       ) {
         const workspaceRoot = vscode.workspace.workspaceFolders[0];
-        const entries = await vscode.workspace.fs.readDirectory(
-          workspaceRoot.uri
-        );
+        const allFolders: string[] = [];
 
-        const existingFolders = entries
-          .filter(([name, type]) => type === vscode.FileType.Directory)
-          .map(([name]) => name);
+        const discoverFoldersRecursively = async (
+          currentUri: vscode.Uri,
+          currentPath: string = "",
+          maxDepth: number = 1,
+          currentDepth: number = 0
+        ) => {
+          if (currentDepth > maxDepth) return;
+
+          try {
+            const entries = await vscode.workspace.fs.readDirectory(currentUri);
+            const directories = entries.filter(
+              ([name, type]) => type === vscode.FileType.Directory
+            );
+
+            for (const [name] of directories) {
+              const folderPath = currentPath ? `${currentPath}/${name}` : name;
+
+              if (!name.startsWith(".") && !name.startsWith("__")) {
+                allFolders.push(folderPath);
+              }
+
+              if (
+                currentDepth < maxDepth &&
+                !name.startsWith(".") &&
+                !name.startsWith("__")
+              ) {
+                const subUri = vscode.Uri.joinPath(currentUri, name);
+                await discoverFoldersRecursively(
+                  subUri,
+                  folderPath,
+                  maxDepth,
+                  currentDepth + 1
+                );
+              }
+            }
+          } catch (error) {
+            console.error(`Error reading directory ${currentPath}:`, error);
+          }
+        };
+
+        await discoverFoldersRecursively(workspaceRoot.uri);
 
         const existingDefaultFolders = DEFAULT_EXCLUDED_FOLDERS.filter(
-          (folder) => existingFolders.includes(folder)
+          (folder) => allFolders.includes(folder)
         );
 
-        const additionalFolders = existingFolders.filter(
-          (folder) =>
-            !DEFAULT_EXCLUDED_FOLDERS.includes(folder) &&
-            !folder.startsWith(".")
+        const additionalFolders = allFolders.filter(
+          (folder) => !DEFAULT_EXCLUDED_FOLDERS.includes(folder)
         );
 
         this._allFolders = [
