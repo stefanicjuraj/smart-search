@@ -404,6 +404,28 @@ class SearchPanel {
     }
   }
 
+  private prioritizeOpenFileResults(results: any[]): any[] {
+    const openFileUris = new Set(
+      vscode.window.tabGroups.all
+        .flatMap((group) => group.tabs)
+        .map((tab) => (tab.input as vscode.TabInputText)?.uri?.toString())
+        .filter(Boolean)
+    );
+
+    const openFileResults: any[] = [];
+    const otherResults: any[] = [];
+
+    for (const result of results) {
+      if (result.uri && openFileUris.has(result.uri)) {
+        openFileResults.push(result);
+      } else {
+        otherResults.push(result);
+      }
+    }
+
+    return [...openFileResults, ...otherResults];
+  }
+
   private async performSearch(query: string, category: string) {
     if (!query || query.trim().length === 0) {
       if (category === "pinned") {
@@ -489,24 +511,25 @@ class SearchPanel {
               ...filteredConfigResults,
               ...filteredCommentResults,
             ];
+            results = this.prioritizeOpenFileResults(results);
             break;
           case "files":
-            results = filteredFileResults;
+            results = this.prioritizeOpenFileResults(filteredFileResults);
             break;
           case "text":
-            results = filteredTextResults;
+            results = this.prioritizeOpenFileResults(filteredTextResults);
             break;
           case "symbols":
-            results = filteredSymbolResults;
+            results = this.prioritizeOpenFileResults(filteredSymbolResults);
             break;
           case "docs":
-            results = filteredDocResults;
+            results = this.prioritizeOpenFileResults(filteredDocResults);
             break;
           case "config":
-            results = filteredConfigResults;
+            results = this.prioritizeOpenFileResults(filteredConfigResults);
             break;
           case "comments":
-            results = filteredCommentResults;
+            results = this.prioritizeOpenFileResults(filteredCommentResults);
             break;
           default:
             results = [
@@ -517,6 +540,7 @@ class SearchPanel {
               ...filteredConfigResults,
               ...filteredCommentResults,
             ];
+            results = this.prioritizeOpenFileResults(results);
         }
       }
 
