@@ -6,7 +6,8 @@ import {
 
 export async function searchSymbols(
   query: string,
-  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS
+  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS,
+  excludedGlobPatterns: string[] = []
 ): Promise<any[]> {
   if (!query || query.length < 2) {
     return [];

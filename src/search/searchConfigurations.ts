@@ -10,10 +10,14 @@ import {
 
 export async function searchConfigurations(
   query: string,
-  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS
+  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS,
+  excludedGlobPatterns: string[] = []
 ): Promise<any[]> {
   try {
-    const excludePattern = generateExcludePattern(excludedFolders);
+    const excludePattern = generateExcludePattern(
+      excludedFolders,
+      excludedGlobPatterns
+    );
     const configFiles = await vscode.workspace.findFiles(
       FILE_PATTERNS.CONFIGURATION.replace("**/*.", `**/*${query}*.`),
       excludePattern
@@ -71,7 +75,9 @@ export async function searchConfigurations(
               }
             }
 
-            if (contentResults.length >= SEARCH_LIMITS.MAX_CONFIG_CONTENT_RESULTS) {
+            if (
+              contentResults.length >= SEARCH_LIMITS.MAX_CONFIG_CONTENT_RESULTS
+            ) {
               break;
             }
           }
@@ -81,7 +87,10 @@ export async function searchConfigurations(
       }
     }
 
-    return [...fileResults, ...contentResults].slice(0, SEARCH_LIMITS.MAX_RESULTS_PER_SEARCH);
+    return [...fileResults, ...contentResults].slice(
+      0,
+      SEARCH_LIMITS.MAX_RESULTS_PER_SEARCH
+    );
   } catch (error) {
     console.error("Config search error:", error);
     return [];

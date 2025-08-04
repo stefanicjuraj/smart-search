@@ -10,10 +10,14 @@ import {
 
 export async function searchDocumentation(
   query: string,
-  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS
+  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS,
+  excludedGlobPatterns: string[] = []
 ): Promise<any[]> {
   try {
-    const excludePattern = generateExcludePattern(excludedFolders);
+    const excludePattern = generateExcludePattern(
+      excludedFolders,
+      excludedGlobPatterns
+    );
     const docFiles = await vscode.workspace.findFiles(
       FILE_PATTERNS.DOCUMENTATION.replace("**/*.", `**/*${query}*.`),
       excludePattern
@@ -71,7 +75,9 @@ export async function searchDocumentation(
               }
             }
 
-            if (contentResults.length >= SEARCH_LIMITS.MAX_DOC_CONTENT_RESULTS) {
+            if (
+              contentResults.length >= SEARCH_LIMITS.MAX_DOC_CONTENT_RESULTS
+            ) {
               break;
             }
           }
@@ -81,7 +87,10 @@ export async function searchDocumentation(
       }
     }
 
-    return [...fileResults, ...contentResults].slice(0, SEARCH_LIMITS.MAX_RESULTS_PER_SEARCH);
+    return [...fileResults, ...contentResults].slice(
+      0,
+      SEARCH_LIMITS.MAX_RESULTS_PER_SEARCH
+    );
   } catch (error) {
     console.error("Documentation search error:", error);
     return [];

@@ -487,12 +487,23 @@ export const SEARCH_LIMITS = {
   MAX_DOC_CONTENT_RESULTS: 25,
 };
 
-export function generateExcludePattern(excludedFolders: string[]): string {
-  if (!excludedFolders || excludedFolders.length === 0) {
-    return `**/{${DEFAULT_EXCLUDED_FOLDERS.join(",")}}/**`;
+export function generateExcludePattern(
+  excludedFolders: string[],
+  excludedGlobPatterns: string[] = []
+): string {
+  const folders =
+    excludedFolders && excludedFolders.length > 0
+      ? excludedFolders
+      : DEFAULT_EXCLUDED_FOLDERS;
+
+  const folderPattern = `**/{${folders.join(",")}}/**`;
+
+  if (!excludedGlobPatterns || excludedGlobPatterns.length === 0) {
+    return folderPattern;
   }
 
-  return `**/{${excludedFolders.join(",")}}/**`;
+  const allPatterns = [folderPattern, ...excludedGlobPatterns];
+  return `{${allPatterns.join(",")}}`;
 }
 
 export function getFileExtension(filePath: string): string {

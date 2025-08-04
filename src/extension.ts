@@ -39,7 +39,9 @@ class SearchPanel {
   ];
   private _disabledTabs: string[] = [];
   private _excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS;
+  private _excludedGlobPatterns: string[] = [];
   private _allFolders: string[] = [];
+
   private normalizePathToWorkspace(path: string): string {
     if (!path) return "";
 
@@ -125,6 +127,11 @@ class SearchPanel {
       DEFAULT_EXCLUDED_FOLDERS
     );
 
+    this._excludedGlobPatterns = this._extensionContext.globalState.get(
+      "smartSearch.excludedGlobPatterns",
+      []
+    );
+
     this._allFolders = [];
     this.discoverWorkspaceFolders();
 
@@ -159,6 +166,7 @@ class SearchPanel {
           this._panel.webview.postMessage({
             command: "folderSettings",
             excludedFolders: this._excludedFolders,
+            excludedGlobPatterns: this._excludedGlobPatterns,
             allFolders: this._allFolders,
           });
         }
@@ -190,6 +198,9 @@ class SearchPanel {
             return;
           case "updateExcludedFolders":
             this.updateExcludedFolders(message.excludedFolders);
+            return;
+          case "updateExcludedGlobPatterns":
+            this.updateExcludedGlobPatterns(message.excludedGlobPatterns);
             return;
         }
       },
@@ -238,6 +249,16 @@ class SearchPanel {
     this._extensionContext.globalState.update(
       "smartSearch.excludedFolders",
       this._excludedFolders
+    );
+  }
+
+  private updateExcludedGlobPatterns(excludedGlobPatterns: string[]) {
+    if (!excludedGlobPatterns || !Array.isArray(excludedGlobPatterns)) return;
+
+    this._excludedGlobPatterns = excludedGlobPatterns;
+    this._extensionContext.globalState.update(
+      "smartSearch.excludedGlobPatterns",
+      this._excludedGlobPatterns
     );
   }
 
@@ -337,6 +358,7 @@ class SearchPanel {
         this._panel.webview.postMessage({
           command: "folderSettings",
           excludedFolders: this._excludedFolders,
+          excludedGlobPatterns: this._excludedGlobPatterns,
           allFolders: this._allFolders,
         });
       }
@@ -461,20 +483,35 @@ class SearchPanel {
         );
         categoryCounts.pinned = results.length;
       } else {
-        const fileResults = await searchFiles(query, this._excludedFolders);
-        const textResults = await searchText(query, this._excludedFolders);
-        const symbolResults = await searchSymbols(query, this._excludedFolders);
+        const fileResults = await searchFiles(
+          query,
+          this._excludedFolders,
+          this._excludedGlobPatterns
+        );
+        const textResults = await searchText(
+          query,
+          this._excludedFolders,
+          this._excludedGlobPatterns
+        );
+        const symbolResults = await searchSymbols(
+          query,
+          this._excludedFolders,
+          this._excludedGlobPatterns
+        );
         const docResults = await searchDocumentation(
           query,
-          this._excludedFolders
+          this._excludedFolders,
+          this._excludedGlobPatterns
         );
         const configResults = await searchConfigurations(
           query,
-          this._excludedFolders
+          this._excludedFolders,
+          this._excludedGlobPatterns
         );
         const commentResults = await searchComments(
           query,
-          this._excludedFolders
+          this._excludedFolders,
+          this._excludedGlobPatterns
         );
 
         const filteredFileResults = this.filterResults(fileResults, query);
@@ -943,6 +980,67 @@ class SearchPanel {
           cursor: pointer;
           font-family: var(--vscode-editor-font-family);
         }
+        .glob-patterns-container {
+          margin-top: 8px;
+        }
+        .glob-input-container {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+        .glob-pattern-input {
+          flex: 1;
+          padding: 6px 8px;
+          background: var(--vscode-input-background);
+          border: 1px solid var(--vscode-input-border);
+          color: var(--vscode-input-foreground);
+          border-radius: 3px;
+          font-size: 12px;
+          font-family: var(--vscode-editor-font-family);
+        }
+        .add-glob-pattern-btn {
+          padding: 6px 12px;
+          background: var(--vscode-button-background);
+          color: var(--vscode-button-foreground);
+          border: none;
+          border-radius: 3px;
+          cursor: pointer;
+          font-size: 12px;
+        }
+        .add-glob-pattern-btn:hover {
+          background: var(--vscode-button-hoverBackground);
+        }
+        .glob-patterns-list {
+          max-height: 150px;
+          overflow-y: auto;
+        }
+        .glob-pattern-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 4px 8px;
+          background: var(--vscode-input-background);
+          margin-bottom: 4px;
+          border-radius: 3px;
+          font-size: 12px;
+          font-family: var(--vscode-editor-font-family);
+        }
+        .glob-pattern-text {
+          flex: 1;
+          color: var(--vscode-foreground);
+        }
+        .remove-glob-pattern-btn {
+          padding: 2px 6px;
+          background: var(--vscode-button-secondaryBackground);
+          color: var(--vscode-button-secondaryForeground);
+          border: none;
+          border-radius: 2px;
+          cursor: pointer;
+          font-size: 11px;
+        }
+        .remove-glob-pattern-btn:hover {
+          background: var(--vscode-button-secondaryHoverBackground);
+        }
         .results {
           max-height: 500px;
           overflow-y: auto;
@@ -1147,6 +1245,20 @@ class SearchPanel {
                 <!-- Folder settings will be populated dynamically -->
               </div>
             </div>
+            
+            <div class="settings-section">
+              <h4 class="settings-section-title">Glob Patterns</h4>
+              <p class="settings-description">Add custom patterns to exclude (e.g., **/test/**, **/*.temp, src/**/cache/**)</p>
+              <div class="glob-patterns-container">
+                <div class="glob-input-container">
+                  <input type="text" id="globPatternInput" placeholder="Enter glob pattern..." class="glob-pattern-input">
+                  <button type="button" id="addGlobPatternBtn" class="add-glob-pattern-btn">Add</button>
+                </div>
+                <div class="glob-patterns-list" id="globPatternsList">
+                  <!-- Glob patterns will be populated dynamically -->
+                </div>
+              </div>
+            </div>
           </div>
           <div class="tabs" id="tabsContainer">
             <!-- Tabs will be populated dynamically -->
@@ -1170,6 +1282,7 @@ class SearchPanel {
           let tabOrder = ['all', 'files', 'text', 'symbols', 'docs', 'config', 'comments', 'pinned'];
           let disabledTabs = [];
           let excludedFolders = ${JSON.stringify(DEFAULT_EXCLUDED_FOLDERS)};
+          let excludedGlobPatterns = [];
           let allFolders = [];
           
           const iconSources = {
@@ -1551,6 +1664,7 @@ class SearchPanel {
           
           function setupFolderSettings() {
             updateFolderSettingsPanel();
+            setupGlobPatterns();
           }
           
           function updateFolderSettingsPanel() {
@@ -1598,6 +1712,85 @@ class SearchPanel {
               folderItem.appendChild(label);
               folderExcludeList.appendChild(folderItem);
             });
+          }
+          
+          function setupGlobPatterns() {
+            const addBtn = document.getElementById('addGlobPatternBtn');
+            const input = document.getElementById('globPatternInput');
+            
+            if (addBtn && input) {
+              addBtn.addEventListener('click', () => {
+                const pattern = input.value.trim();
+                if (pattern) {
+                  addGlobPattern(pattern);
+                  input.value = '';
+                }
+              });
+              
+              input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                  const pattern = input.value.trim();
+                  if (pattern) {
+                    addGlobPattern(pattern);
+                    input.value = '';
+                  }
+                }
+              });
+            }
+            
+            updateGlobPatternsPanel();
+          }
+          
+          function addGlobPattern(pattern) {
+            if (!excludedGlobPatterns.includes(pattern)) {
+              excludedGlobPatterns.push(pattern);
+              vscode.postMessage({
+                command: 'updateExcludedGlobPatterns',
+                excludedGlobPatterns: excludedGlobPatterns
+              });
+              updateGlobPatternsPanel();
+            }
+          }
+          
+          function removeGlobPattern(pattern) {
+            const index = excludedGlobPatterns.indexOf(pattern);
+            if (index !== -1) {
+              excludedGlobPatterns.splice(index, 1);
+              vscode.postMessage({
+                command: 'updateExcludedGlobPatterns',
+                excludedGlobPatterns: excludedGlobPatterns
+              });
+              updateGlobPatternsPanel();
+            }
+          }
+          
+          function updateGlobPatternsPanel() {
+            const globPatternsList = document.getElementById('globPatternsList');
+            if (!globPatternsList) return;
+            
+            globPatternsList.innerHTML = '';
+            
+            if (excludedGlobPatterns && excludedGlobPatterns.length > 0) {
+              excludedGlobPatterns.forEach(pattern => {
+                const patternItem = document.createElement('div');
+                patternItem.className = 'glob-pattern-item';
+                
+                const patternText = document.createElement('span');
+                patternText.className = 'glob-pattern-text';
+                patternText.textContent = pattern;
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-glob-pattern-btn';
+                removeBtn.textContent = 'Remove';
+                removeBtn.addEventListener('click', () => {
+                  removeGlobPattern(pattern);
+                });
+                
+                patternItem.appendChild(patternText);
+                patternItem.appendChild(removeBtn);
+                globPatternsList.appendChild(patternItem);
+              });
+            }
           }
           
           function performSearch(text, category) {
@@ -2149,11 +2342,16 @@ class SearchPanel {
                   excludedFolders = message.excludedFolders;
                 }
                 
+                if (message.excludedGlobPatterns && Array.isArray(message.excludedGlobPatterns)) {
+                  excludedGlobPatterns = message.excludedGlobPatterns;
+                }
+                
                 if (message.allFolders && Array.isArray(message.allFolders)) {
                   allFolders = message.allFolders;
                 }
                 
                 updateFolderSettingsPanel();
+                updateGlobPatternsPanel();
                 break;
               case 'focusSearchInput':
                 const searchInput = document.getElementById('searchInput');

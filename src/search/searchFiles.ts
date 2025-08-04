@@ -9,10 +9,14 @@ import {
 
 export async function searchFiles(
   query: string,
-  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS
+  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS,
+  excludedGlobPatterns: string[] = []
 ): Promise<any[]> {
   try {
-    const excludePattern = generateExcludePattern(excludedFolders);
+    const excludePattern = generateExcludePattern(
+      excludedFolders,
+      excludedGlobPatterns
+    );
     const files = await vscode.workspace.findFiles(
       FILE_PATTERNS.ALL_FILES.replace("**/*.", `**/*${query}*.`),
       excludePattern

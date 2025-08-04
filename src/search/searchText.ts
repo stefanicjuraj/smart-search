@@ -1,17 +1,18 @@
 import * as vscode from "vscode";
-import { 
-  generateExcludePattern, 
+import {
+  generateExcludePattern,
   DEFAULT_EXCLUDED_FOLDERS,
   FILE_PATTERNS,
   SEARCH_LIMITS,
   hasSubstantialContent,
   getFileName,
-  getFileExtension
+  getFileExtension,
 } from "../utils/getCommentFormats";
 
 export async function searchText(
   query: string,
-  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS
+  excludedFolders: string[] = DEFAULT_EXCLUDED_FOLDERS,
+  excludedGlobPatterns: string[] = []
 ): Promise<any[]> {
   if (!query || query.length < 2) {
     return [];
@@ -25,7 +26,10 @@ export async function searchText(
       FILE_PATTERNS.ALL_FILES
     );
 
-    const excludePattern = generateExcludePattern(excludedFolders);
+    const excludePattern = generateExcludePattern(
+      excludedFolders,
+      excludedGlobPatterns
+    );
     const files = await vscode.workspace.findFiles(filePattern, excludePattern);
     const filesToSearch = files.slice(0, SEARCH_LIMITS.MAX_FILES_TO_SEARCH);
 
