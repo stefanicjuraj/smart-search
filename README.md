@@ -13,6 +13,10 @@ An extension for advanced search functionality. The extension supports the follo
 
 <img src="./assets/gifs/search.gif" />
 
+## Installation
+
+[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jurajstefanic.smart-search)
+
 ## Usage
 
 1. Activate the search using the keyboard shortcut or command palette.
@@ -35,10 +39,6 @@ An extension for advanced search functionality. The extension supports the follo
   - Arrow keys (left/right): `←/→` or `Shift`
 - Open the search result
   - `Enter`
-
-## Installation
-
-- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jurajstefanic.smart-search)
 
 ## Examples
 
