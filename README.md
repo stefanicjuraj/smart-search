@@ -8,7 +8,7 @@ An extension for advanced search functionality. The extension supports the follo
 - [**Symbols**](#symbols): Search for functions and variables
 - [**Documentation**](#docs): Search for documentation content
 - [**Configuration**](#settings): Search for configuration content
-- **Comments**: Search for comments
+- [**Comments**](#comments): Search for comments
 - [**Pinned**](#pinned): Pin search results
 
 <img src="./assets/gifs/search.gif" />
@@ -61,6 +61,10 @@ An extension for advanced search functionality. The extension supports the follo
 ### Config
 
 <img src="./assets/images/config.png" />
+
+### Comments
+
+<img src="./assets/images/comments.png" />
 
 ### Pinned
 
