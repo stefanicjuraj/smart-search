@@ -2,21 +2,21 @@
 
 An extension for advanced search functionality. The extension supports the following search categories:
 
-- **All**: Search for everything below
-- **Files**: Search for filenames
-- **Text**: Search for full-text content
-- **Symbols:** Search for functions and variables
-- **Documentation**: Search for documentation content
-- **Configuration**: Search for configuration content
+- [**All**](#examples): Search for everything
+- [**Files**](#files): Search for filenames
+- [**Text**](#text): Search for full-text content
+- [**Symbols**](#symbols): Search for functions and variables
+- [**Documentation**](#docs): Search for documentation content
+- [**Configuration**](#settings): Search for configuration content
 - **Comments**: Search for comments
-- **Pinned**: Pin search results
+- [**Pinned**](#pinned): Pin search results
 
 <img src="./assets/gifs/search.gif" />
 
 ## Usage
 
 1. Activate the search using the keyboard shortcut or command palette.
-   1. Windows/Linux: `Ctrl+Alt+F` or `Ctrl+K` / macOS: `Cmd+Option+F` or `Cmd+K`
+   1. **Windows/Linux**: `Ctrl+Alt+F` or `Ctrl+K` / **macOS**: `Cmd+Option+F` or `Cmd+K`
    2. `> Smart Search: Open Search Popup`
 2. Type your search query in the input field
 3. Select the appropriate search category
@@ -26,7 +26,7 @@ An extension for advanced search functionality. The extension supports the follo
 ### Keyboard Shortcuts
 
 - Activate the search
-  - Windows/Linux: `Ctrl+Alt+F` or `Ctrl+K` / macOS: `Cmd+Option+F` or `Cmd+K`
+  - **Windows/Linux**: `Ctrl+Alt+F` or `Ctrl+K` / **macOS**: `Cmd+Option+F` or `Cmd+K`
 - Navigate categories
   - Arrow keys (up/down): `↑/↓`
 - Navigate results
