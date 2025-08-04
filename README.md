@@ -16,8 +16,9 @@ An extension for advanced search functionality. The extension supports the follo
 ## Usage
 
 1. Activate the search using the keyboard shortcut or command palette.
-   1. **Windows/Linux**: `Ctrl+Alt+F` or `Ctrl+K` / **macOS**: `Cmd+Option+F` or `Cmd+K`
-   2. `> Smart Search: Open Search Popup`
+   - **Windows/Linux**: `Ctrl+Alt+F` or `Ctrl+K`
+   - **macOS**: `Cmd+Option+F` or `Cmd+K`
+   - `> Smart Search: Open Search Popup`
 2. Type your search query in the input field
 3. Select the appropriate search category
 4. Browse through search results
@@ -26,7 +27,8 @@ An extension for advanced search functionality. The extension supports the follo
 ### Keyboard Shortcuts
 
 - Activate the search
-  - **Windows/Linux**: `Ctrl+Alt+F` or `Ctrl+K` / **macOS**: `Cmd+Option+F` or `Cmd+K`
+  - **Windows/Linux**: `Ctrl+Alt+F` or `Ctrl+K`
+  - **macOS**: `Cmd+Option+F` or `Cmd+K`
 - Navigate categories
   - Arrow keys (up/down): `↑/↓`
 - Navigate results
